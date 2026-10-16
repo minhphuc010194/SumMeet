@@ -5,13 +5,17 @@ import type {
   TranscriptSegment,
 } from "@/types/meeting";
 import { transcribeAudioChunk } from "@/services/ai/transcribe";
-import { readRecordingSlice } from "@/services/audio/recording-commands";
+import {
+  readRecordingSlice,
+  type RecordingTrack,
+} from "@/services/audio/recording-commands";
 import { MAX_CHUNK_SEC, wavBase64DurationSec } from "@/services/audio/wav";
 
 export async function transcribeRecordingSlice(params: {
   meetingId: string;
   startSec: number;
   minSliceSec: number;
+  track?: RecordingTrack;
   apiKey: string;
   model: string;
   locale: SupportedLocale;
@@ -23,6 +27,7 @@ export async function transcribeRecordingSlice(params: {
     meetingId: params.meetingId,
     startSec: params.startSec,
     maxSec: MAX_CHUNK_SEC,
+    track: params.track,
     locale: params.locale,
   });
   if (!slice.success || slice.data === undefined) {
@@ -41,7 +46,7 @@ export async function transcribeRecordingSlice(params: {
     apiKey: params.apiKey,
     model: params.model,
     meetingId: params.meetingId,
-    channel: "mic_user",
+    channel: params.track === "system" ? "system_remote" : "mic_user",
     locale: params.locale,
     transcriptionLanguage: params.transcriptionLanguage,
     startOffsetSec: params.startSec,
@@ -64,6 +69,7 @@ export async function transcribeRecordingSlice(params: {
 export async function transcribeRecordingTail(params: {
   meetingId: string;
   startSec: number;
+  track?: RecordingTrack;
   apiKey: string;
   model: string;
   locale: SupportedLocale;

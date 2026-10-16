@@ -1,5 +1,7 @@
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use cpal::traits::{DeviceTrait, HostTrait};
+#[cfg(target_os = "macos")]
+use objc2_foundation::{NSOperatingSystemVersion, NSProcessInfo};
 use serde::{Deserialize, Serialize};
 
 pub const TARGET_STT_SAMPLE_RATE: u32 = 16_000;
@@ -37,6 +39,20 @@ pub struct LiveAudioChunkPayload {
     pub rms_level: f32,
     pub sample_rate: u32,
     pub pcm_base64: String,
+}
+
+#[cfg(target_os = "macos")]
+pub fn system_audio_supported() -> bool {
+    NSProcessInfo::processInfo().isOperatingSystemAtLeastVersion(NSOperatingSystemVersion {
+        majorVersion: 14,
+        minorVersion: 6,
+        patchVersion: 0,
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn system_audio_supported() -> bool {
+    cfg!(target_os = "windows")
 }
 
 /// Detects whether a device name corresponds to AirPods, Bluetooth headphones, or wired headsets.

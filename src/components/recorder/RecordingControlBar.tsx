@@ -40,6 +40,7 @@ import {
   getActiveRecording,
   startMicRecording,
   stopMicRecording,
+  type RecordingTrack,
 } from "@/services/audio/recording-commands";
 import {
   transcribeRecordingSlice,
@@ -52,6 +53,34 @@ interface RecordingControlBarProps {
   locale: SupportedLocale;
   onToast: (message: string) => void;
   onRecordingCompleted?: () => void;
+}
+
+const SINGLE_TRACK: { track?: RecordingTrack }[] = [{}];
+const MIC_AND_SYSTEM_TRACKS: { track?: RecordingTrack }[] = [
+  { track: "mic" },
+  { track: "system" },
+];
+
+function transcribedSecFor(track?: RecordingTrack) {
+  const { recordingTranscribedSec, recordingSystemTranscribedSec } =
+    useMeetingStore.getState();
+  return track === "system"
+    ? recordingSystemTranscribedSec
+    : recordingTranscribedSec;
+}
+
+function SignalMeter({ label, level }: { label: string; level: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[11px] text-slate-400">{label}</span>
+      <div className="h-2 w-32 overflow-hidden rounded-full bg-slate-800">
+        <div
+          className="h-full rounded-full bg-emerald-400 transition-all duration-150"
+          style={{ width: `${Math.max(10, Math.round(level * 100))}%` }}
+        />
+      </div>
+    </div>
+  );
 }
 
 interface LatestRecordingResultSummary {
@@ -77,8 +106,11 @@ export function RecordingControlBar({
     appendTranscriptSegment,
     completeMeetingRecording,
     setRecordingTranscribedSec,
+    setRecordingSystemTranscribedSec,
     preferredInputDeviceId,
     setPreferredInputDeviceId,
+    includeSystemAudio,
+    setIncludeSystemAudio,
   } = useMeetingStore();
 
   const [status, setStatus] = useState<DualStreamStatus>(() =>
@@ -89,6 +121,8 @@ export function RecordingControlBar({
   const [isRecoveryPending, setIsRecoveryPending] = useState(true);
   const [isDeviceListPending, setIsDeviceListPending] = useState(true);
   const [isLiveTranscribingChunk, setIsLiveTranscribingChunk] = useState(false);
+  const [systemAudioSupported, setSystemAudioSupported] = useState(false);
+  const [hasSystemAudio, setHasSystemAudio] = useState(false);
   const [processingStepText, setProcessingStepText] = useState("");
   const [spokenCount, setSpokenCount] = useState(0);
   const [latestResult, setLatestResult] =
@@ -110,6 +144,9 @@ export function RecordingControlBar({
   const canSuggestCallRef = useRef(false);
   const wasOtherAppActiveRef = useRef(false);
   const recordFromNotificationRef = useRef<() => void>(() => {});
+  const hasSystemAudioRef = useRef(false);
+  const lastSystemSoundAtMsRef = useRef(0);
+  const isSilentHintShownRef = useRef(false);
   const chunkInFlightRef = useRef<Promise<void> | null>(null);
 
   const refreshDevices = useCallback(
@@ -125,6 +162,7 @@ export function RecordingControlBar({
         setInputDevices(
           result.devices.filter((device) => device.kind === "audioinput")
         );
+        setSystemAudioSupported(result.systemAudioSupported);
         setStatus((prev) => ({
           ...prev,
           activeInputDeviceName: result.activeInputName,
@@ -218,6 +256,10 @@ export function RecordingControlBar({
   }, [dict]);
 
   useEffect(() => {
+    hasSystemAudioRef.current = hasSystemAudio;
+  }, [hasSystemAudio]);
+
+  useEffect(() => {
     refreshDevices(false);
     const intervalId = setInterval(() => refreshDevices(false), 3000);
     return () => clearInterval(intervalId);
@@ -245,23 +287,32 @@ export function RecordingControlBar({
     const transcribeSlice = async () => {
       setIsLiveTranscribingChunk(true);
       try {
-        const { openRouterKey, settings, recordingTranscribedSec } =
-          useMeetingStore.getState();
-        const result = await transcribeRecordingSlice({
-          meetingId,
-          startSec: recordingTranscribedSec,
-          minSliceSec: 3,
-          apiKey: openRouterKey,
-          model: settings.openRouterModel,
-          locale,
-          transcriptionLanguage: settings.transcriptionLanguage,
-        });
-        if (!result.success || !result.data) return;
+        const { openRouterKey, settings } = useMeetingStore.getState();
+        const tracks = hasSystemAudioRef.current
+          ? MIC_AND_SYSTEM_TRACKS
+          : SINGLE_TRACK;
+        for (const trackParams of tracks) {
+          const result = await transcribeRecordingSlice({
+            meetingId,
+            startSec: transcribedSecFor(trackParams.track),
+            minSliceSec: 3,
+            apiKey: openRouterKey,
+            model: settings.openRouterModel,
+            locale,
+            transcriptionLanguage: settings.transcriptionLanguage,
+            ...trackParams,
+          });
+          if (!result.success || !result.data) continue;
 
-        const { segments, nextStartSec } = result.data;
-        segments.forEach((seg) => appendTranscriptSegment(meetingId, seg));
-        setRecordingTranscribedSec(nextStartSec);
-        setSpokenCount((count) => count + segments.length);
+          const { segments, nextStartSec } = result.data;
+          segments.forEach((seg) => appendTranscriptSegment(meetingId, seg));
+          if (trackParams.track === "system") {
+            setRecordingSystemTranscribedSec(nextStartSec);
+          } else {
+            setRecordingTranscribedSec(nextStartSec);
+          }
+          setSpokenCount((count) => count + segments.length);
+        }
       } finally {
         setIsLiveTranscribingChunk(false);
         chunkInFlightRef.current = null;
@@ -269,7 +320,12 @@ export function RecordingControlBar({
     };
 
     chunkInFlightRef.current = transcribeSlice();
-  }, [appendTranscriptSegment, locale, setRecordingTranscribedSec]);
+  }, [
+    appendTranscriptSegment,
+    locale,
+    setRecordingSystemTranscribedSec,
+    setRecordingTranscribedSec,
+  ]);
 
   const startCaptureTimers = useCallback(() => {
     statusTimerRef.current = setInterval(async () => {
@@ -280,14 +336,26 @@ export function RecordingControlBar({
         ...prev,
         durationSeconds: Math.floor(active.elapsedSec),
         micLevel: active.level,
+        systemLevel: active.systemLevel,
       }));
+
+      if (active.systemLevel > 0) {
+        lastSystemSoundAtMsRef.current = Date.now();
+      }
+      const isSystemSilent =
+        active.hasSystemAudio &&
+        Date.now() - lastSystemSoundAtMsRef.current >= 60_000;
+      if (isSystemSilent && !isSilentHintShownRef.current) {
+        isSilentHintShownRef.current = true;
+        onToast(dict.recorder.systemAudioSilentHint);
+      }
     }, 500);
 
     liveChunkTimerRef.current = setInterval(
       transcribeLatestRecordedSlice,
       5000
     );
-  }, [locale, transcribeLatestRecordedSlice]);
+  }, [dict, locale, onToast, transcribeLatestRecordedSlice]);
 
   useEffect(() => {
     let cancelled = false;
@@ -311,12 +379,16 @@ export function RecordingControlBar({
       selectMeeting(meeting.id);
       activeMeetingIdRef.current = meeting.id;
       isRecordingRef.current = true;
+      lastSystemSoundAtMsRef.current = Date.now();
+      isSilentHintShownRef.current = false;
+      setHasSystemAudio(active.hasSystemAudio);
       setStatus((prev) => ({
         ...prev,
         isRecording: true,
         isPaused: false,
         durationSeconds: elapsedSec,
         micLevel: active.level,
+        systemLevel: active.systemLevel,
       }));
       startCaptureTimers();
     }
@@ -396,19 +468,27 @@ export function RecordingControlBar({
     });
 
     setRecordingTranscribedSec(0);
+    setRecordingSystemTranscribedSec(0);
     const started = await startMicRecording({
       meetingId: newMeeting.id,
       inputDeviceId: preferredInput?.id ?? null,
+      includeSystemAudio: includeSystemAudio && systemAudioSupported,
       locale,
     });
-    if (!started.success) {
+    if (!started.success || !started.data) {
       deleteMeeting(newMeeting.id);
       onToast(started.error ?? dict.errors.recordingFailed);
       return;
     }
 
+    if (started.data.systemAudioError) {
+      onToast(dict.recorder.systemAudioUnavailable);
+    }
     activeMeetingIdRef.current = newMeeting.id;
     isRecordingRef.current = true;
+    lastSystemSoundAtMsRef.current = Date.now();
+    isSilentHintShownRef.current = false;
+    setHasSystemAudio(started.data.hasSystemAudio);
     setSpokenCount(0);
     setStatus((prev) => ({
       ...prev,
@@ -444,22 +524,25 @@ export function RecordingControlBar({
         return;
       }
 
-      const { openRouterKey, settings, recordingTranscribedSec } =
-        useMeetingStore.getState();
-      const tail = await transcribeRecordingTail({
-        meetingId: finishedMeetingId,
-        startSec: recordingTranscribedSec,
-        apiKey: openRouterKey,
-        model: settings.openRouterModel,
-        locale,
-        transcriptionLanguage: settings.transcriptionLanguage,
-        onSegments: (segments) =>
-          segments.forEach((seg) =>
-            appendTranscriptSegment(finishedMeetingId, seg)
-          ),
-      });
-      if (!tail.success) {
-        onToast(tail.error ?? dict.errors.transcriptionFailed);
+      const { openRouterKey, settings } = useMeetingStore.getState();
+      const tracks = hasSystemAudio ? MIC_AND_SYSTEM_TRACKS : SINGLE_TRACK;
+      for (const trackParams of tracks) {
+        const tail = await transcribeRecordingTail({
+          meetingId: finishedMeetingId,
+          startSec: transcribedSecFor(trackParams.track),
+          apiKey: openRouterKey,
+          model: settings.openRouterModel,
+          locale,
+          transcriptionLanguage: settings.transcriptionLanguage,
+          onSegments: (segments) =>
+            segments.forEach((seg) =>
+              appendTranscriptSegment(finishedMeetingId, seg)
+            ),
+          ...trackParams,
+        });
+        if (!tail.success) {
+          onToast(tail.error ?? dict.errors.transcriptionFailed);
+        }
       }
 
       await summarizeAndPresent({
@@ -593,6 +676,8 @@ export function RecordingControlBar({
   const hasLatestResult = latestResult !== null;
   const isStartBlocked =
     isProcessingResult || isRecoveryPending || isDeviceListPending;
+  const isSystemAudioToggleDisabled =
+    status.isRecording || isStartBlocked || !systemAudioSupported;
 
   useEffect(() => {
     recordFromNotificationRef.current = () => {
@@ -665,12 +750,31 @@ export function RecordingControlBar({
               <button
                 type="button"
                 role="switch"
-                aria-checked={false}
-                onClick={() => onToast(dict.recorder.systemAudioComingSoon)}
-                className="inline-flex items-center gap-1.5 rounded-md bg-slate-800/90 px-2 py-0.5 text-slate-300 transition hover:bg-slate-700"
+                aria-checked={includeSystemAudio}
+                disabled={isSystemAudioToggleDisabled}
+                title={
+                  systemAudioSupported
+                    ? undefined
+                    : dict.recorder.systemAudioUnsupported
+                }
+                onClick={() => {
+                  setIncludeSystemAudio(!includeSystemAudio);
+                  if (!includeSystemAudio) {
+                    onToast(dict.recorder.systemAudioPermissionHint);
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 rounded-md bg-slate-800/90 px-2 py-0.5 text-slate-300 transition hover:bg-slate-700 disabled:opacity-50"
               >
-                <span className="inline-flex h-3.5 w-6 items-center rounded-full bg-slate-600">
-                  <span className="ml-0.5 h-2.5 w-2.5 rounded-full bg-white" />
+                <span
+                  className={`inline-flex h-3.5 w-6 items-center rounded-full ${
+                    includeSystemAudio ? "bg-orange-500" : "bg-slate-600"
+                  }`}
+                >
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full bg-white ${
+                      includeSystemAudio ? "ml-3" : "ml-0.5"
+                    }`}
+                  />
                 </span>
                 {dict.recorder.includeSystemAudio}
               </button>
@@ -786,18 +890,17 @@ export function RecordingControlBar({
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400">
-              {dict.recorder.audioSignal}
-            </span>
-            <div className="h-2 w-32 overflow-hidden rounded-full bg-slate-800">
-              <div
-                className="h-full rounded-full bg-emerald-400 transition-all duration-150"
-                style={{
-                  width: `${Math.max(10, Math.round(status.micLevel * 100))}%`,
-                }}
+          <div className="flex items-center gap-4">
+            <SignalMeter
+              label={dict.recorder.audioSignal}
+              level={status.micLevel}
+            />
+            {hasSystemAudio && (
+              <SignalMeter
+                label={dict.recorder.systemSignal}
+                level={status.systemLevel}
               />
-            </div>
+            )}
           </div>
         </div>
       )}

@@ -11,15 +11,21 @@ export interface RecordingFile {
   durationSec: number;
 }
 
+export type RecordingTrack = "mic" | "system";
+
 export interface RecordingStart {
   meetingId: string;
   wavPath: string;
   startedAtMs: number;
+  hasSystemAudio: boolean;
+  systemAudioError: string | null;
 }
 
-export interface ActiveRecordingStatus extends RecordingStart {
+export interface ActiveRecordingStatus
+  extends Omit<RecordingStart, "systemAudioError"> {
   elapsedSec: number;
   level: number;
+  systemLevel: number;
 }
 
 export interface RecordingsListing {
@@ -60,6 +66,7 @@ async function invokeRecordingCommand<T>(params: {
 export function startMicRecording(params: {
   meetingId: string;
   inputDeviceId: string | null;
+  includeSystemAudio: boolean;
   locale: SupportedLocale;
 }): Promise<ApiResponse<RecordingStart>> {
   return invokeRecordingCommand({
@@ -67,7 +74,10 @@ export function startMicRecording(params: {
     locale: params.locale,
     args: {
       meetingId: params.meetingId,
-      options: { inputDeviceId: params.inputDeviceId },
+      options: {
+        inputDeviceId: params.inputDeviceId,
+        includeSystemAudio: params.includeSystemAudio,
+      },
     },
   });
 }
@@ -93,6 +103,7 @@ export function readRecordingSlice(params: {
   meetingId: string;
   startSec: number;
   maxSec: number;
+  track?: RecordingTrack;
   locale: SupportedLocale;
 }): Promise<ApiResponse<string>> {
   return invokeRecordingCommand({
@@ -102,6 +113,7 @@ export function readRecordingSlice(params: {
       meetingId: params.meetingId,
       startSec: params.startSec,
       maxSec: params.maxSec,
+      ...(params.track && { track: params.track }),
     },
   });
 }

@@ -57,6 +57,33 @@ pub fn recording_path(dir: &Path, meeting_id: &str) -> Result<PathBuf, String> {
     Ok(dir.join(format!("{safe_id}.wav")))
 }
 
+#[derive(Debug, PartialEq)]
+pub struct TrackPaths {
+    pub mix: PathBuf,
+    pub mic: PathBuf,
+    pub system: PathBuf,
+}
+
+impl TrackPaths {
+    fn select(&self, track: Option<&str>) -> Result<&Path, String> {
+        match track {
+            None => Ok(&self.mix),
+            Some("mic") => Ok(&self.mic),
+            Some("system") => Ok(&self.system),
+            Some(_) => Err("invalid_track".to_string()),
+        }
+    }
+}
+
+pub fn track_paths(dir: &Path, meeting_id: &str) -> Result<TrackPaths, String> {
+    let mix = recording_path(dir, meeting_id)?;
+    Ok(TrackPaths {
+        mic: mix.with_extension("mic.wav"),
+        system: mix.with_extension("system.wav"),
+        mix,
+    })
+}
+
 fn wav_paths(dir: &Path) -> Result<Vec<PathBuf>, String> {
     let entries = fs::read_dir(dir).map_err(|e| e.to_string())?;
     Ok(entries
@@ -98,6 +125,7 @@ pub fn recording_file(path: &Path) -> Result<RecordingFile, String> {
 fn list_wav_recordings(dir: &Path) -> Result<Vec<RecordingFile>, String> {
     let mut files: Vec<RecordingFile> = wav_paths(dir)?
         .iter()
+        .filter(|path| !path.file_stem().is_some_and(|stem| stem.to_string_lossy().contains('.')))
         .filter_map(|path| recording_file(path).ok())
         .collect();
     files.sort_by(|a, b| b.created_at_ms.cmp(&a.created_at_ms));
@@ -148,6 +176,15 @@ fn remove_wav(path: &Path) -> Result<(), String> {
     }
 }
 
+fn remove_recording(paths: &TrackPaths, active_wav: Option<PathBuf>) -> Result<(), String> {
+    if active_wav.as_deref() == Some(paths.mix.as_path()) {
+        return Err("recording_active".to_string());
+    }
+    [&paths.mix, &paths.mic, &paths.system]
+        .into_iter()
+        .try_for_each(|path| remove_wav(path))
+}
+
 fn remove_all_wavs(dir: &Path) -> Result<(), String> {
     wav_paths(dir)?.iter().try_for_each(|path| remove_wav(path))
 }
@@ -157,9 +194,11 @@ pub fn read_recording_slice(
     meeting_id: String,
     start_sec: f64,
     max_sec: f64,
+    track: Option<String>,
     dir: State<'_, RecordingsDir>,
 ) -> Result<String, String> {
-    slice_wav_base64(&recording_path(&dir.0, &meeting_id)?, start_sec, max_sec)
+    let paths = track_paths(&dir.0, &meeting_id)?;
+    slice_wav_base64(paths.select(track.as_deref())?, start_sec, max_sec)
 }
 
 #[tauri::command(async)]
@@ -176,11 +215,10 @@ pub fn delete_recording(
     dir: State<'_, RecordingsDir>,
     recorder: State<'_, MicRecorder>,
 ) -> Result<(), String> {
-    let path = recording_path(&dir.0, &meeting_id)?;
-    if recorder.active_wav_path().as_deref() == Some(path.as_path()) {
-        return Err("recording_active".to_string());
-    }
-    remove_wav(&path)
+    remove_recording(
+        &track_paths(&dir.0, &meeting_id)?,
+        recorder.active_wav_path(),
+    )
 }
 
 #[tauri::command(async)]
@@ -242,6 +280,113 @@ mod tests {
             recording_path(dir, ""),
             Err("invalid_meeting_id".to_string())
         );
+    }
+
+    #[test]
+    fn test_track_paths_are_sanitized_and_stay_in_dir() {
+        let dir = Path::new("/data/recordings");
+
+        let traversal = track_paths(dir, "../../etc/passwd").unwrap();
+        assert_eq!(traversal.mix, dir.join("______etc_passwd.wav"));
+        assert_eq!(traversal.mic, dir.join("______etc_passwd.mic.wav"));
+        assert_eq!(traversal.system, dir.join("______etc_passwd.system.wav"));
+        for path in [&traversal.mix, &traversal.mic, &traversal.system] {
+            assert_eq!(path.parent(), Some(dir));
+        }
+
+        let mixed = track_paths(dir, "meeting 1/..\\x").unwrap();
+        assert_eq!(mixed.mic.file_name().unwrap(), "meeting_1____x.mic.wav");
+        assert_eq!(mixed.system.file_name().unwrap(), "meeting_1____x.system.wav");
+        assert_eq!(mixed.mic.parent(), Some(dir));
+        assert_eq!(mixed.system.parent(), Some(dir));
+
+        assert_eq!(track_paths(dir, ""), Err("invalid_meeting_id".to_string()));
+    }
+
+    #[test]
+    fn test_select_maps_track_names_and_rejects_unknown_tracks() {
+        let dir = Path::new("/data/recordings");
+        let paths = track_paths(dir, "m1").unwrap();
+
+        assert_eq!(paths.select(None).unwrap(), dir.join("m1.wav"));
+        assert_eq!(paths.select(Some("mic")).unwrap(), dir.join("m1.mic.wav"));
+        assert_eq!(paths.select(Some("system")).unwrap(), dir.join("m1.system.wav"));
+        for track in ["", "MIC", "mix", "mic.wav", "../m1"] {
+            assert_eq!(paths.select(Some(track)), Err("invalid_track".to_string()));
+        }
+    }
+
+    #[test]
+    fn test_system_track_slice_is_capped_and_checked_like_the_main_file() {
+        let dir = temp_dir();
+        let paths = track_paths(&dir, "m1").unwrap();
+        write_wav(&paths.system, &vec![7; 200 * 16_000]);
+
+        let system = paths.select(Some("system")).unwrap();
+        let (spec, huge) = decode_slice(&slice_wav_base64(system, 0.0, 1e9).unwrap());
+        assert_eq!(spec, stt_wav_spec());
+        assert_eq!(huge.len(), 180 * 16_000);
+        let (_, rest) = decode_slice(&slice_wav_base64(system, 180.0, 1e9).unwrap());
+        assert_eq!(rest.len(), 20 * 16_000);
+        assert_eq!(
+            slice_wav_base64(system, -1.0, 1.0),
+            Err("invalid_range".to_string())
+        );
+
+        let stereo = hound::WavSpec {
+            channels: 2,
+            sample_rate: 44_100,
+            bits_per_sample: 16,
+            sample_format: hound::SampleFormat::Int,
+        };
+        let mut writer = hound::WavWriter::create(&paths.mic, stereo).unwrap();
+        writer.write_sample(1i16).unwrap();
+        writer.write_sample(2i16).unwrap();
+        writer.finalize().unwrap();
+        assert_eq!(
+            slice_wav_base64(paths.select(Some("mic")).unwrap(), 0.0, 1.0),
+            Err("unsupported_wav_format".to_string())
+        );
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_list_skips_track_files_and_keeps_the_mix() {
+        let dir = temp_dir();
+        let paths = track_paths(&dir, "m1").unwrap();
+        write_wav(&paths.mix, &[0; 16]);
+        write_wav(&paths.mic, &[0; 16]);
+        write_wav(&paths.system, &[0; 16]);
+
+        let files = list_wav_recordings(&dir).unwrap();
+
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].meeting_id, "m1");
+        assert_eq!(files[0].file_name, "m1.wav");
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_remove_recording_deletes_all_tracks_and_refuses_while_active() {
+        let dir = temp_dir();
+        let paths = track_paths(&dir, "m1").unwrap();
+        let other = track_paths(&dir, "m2").unwrap();
+        for path in [&paths.mix, &paths.mic, &paths.system, &other.mix] {
+            write_wav(path, &[0; 16]);
+        }
+
+        assert_eq!(
+            remove_recording(&paths, Some(paths.mix.clone())),
+            Err("recording_active".to_string())
+        );
+        assert!(paths.mix.exists() && paths.mic.exists() && paths.system.exists());
+
+        remove_recording(&paths, Some(other.mix.clone())).unwrap();
+
+        assert!(!paths.mix.exists() && !paths.mic.exists() && !paths.system.exists());
+        assert!(other.mix.exists());
+        remove_recording(&paths, None).unwrap();
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
@@ -402,6 +547,22 @@ mod tests {
         assert!(!dir.join("b.wav").exists());
         assert!(dir.join("keep.txt").exists());
         assert!(dir.join("folder.wav").is_dir());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_remove_all_wavs_removes_mix_mic_and_system_track_files() {
+        let dir = temp_dir();
+        let paths = track_paths(&dir, "m1").unwrap();
+        for path in [&paths.mix, &paths.mic, &paths.system] {
+            write_wav(path, &[0; 16]);
+        }
+        fs::write(dir.join("keep.txt"), "keep").unwrap();
+
+        remove_all_wavs(&dir).unwrap();
+
+        assert!(wav_paths(&dir).unwrap().is_empty());
+        assert!(dir.join("keep.txt").exists());
         fs::remove_dir_all(&dir).unwrap();
     }
 }

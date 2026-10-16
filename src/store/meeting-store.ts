@@ -39,7 +39,9 @@ type PersistedMeetingState = Pick<
   | "calendarEvents"
   | "settings"
   | "recordingTranscribedSec"
+  | "recordingSystemTranscribedSec"
   | "preferredInputDeviceId"
+  | "includeSystemAudio"
 >;
 
 interface MeetingStoreState {
@@ -51,11 +53,15 @@ interface MeetingStoreState {
   openRouterKeyStatus: OpenRouterKeyStatus;
   currentAudioTimeMs: number;
   recordingTranscribedSec: number;
+  recordingSystemTranscribedSec: number;
   preferredInputDeviceId: string | null;
+  includeSystemAudio: boolean;
   selectMeeting: (meetingId: string) => void;
   setCurrentAudioTimeMs: (ms: number) => void;
   setRecordingTranscribedSec: (sec: number) => void;
+  setRecordingSystemTranscribedSec: (sec: number) => void;
   setPreferredInputDeviceId: (id: string | null) => void;
+  setIncludeSystemAudio: (include: boolean) => void;
   createMeetingSession: (params: {
     title: string;
     audioDeviceUsed: string;
@@ -99,7 +105,9 @@ export const useMeetingStore = create<MeetingStoreState>()(
       openRouterKeyStatus: "loading",
       currentAudioTimeMs: 0,
       recordingTranscribedSec: 0,
+      recordingSystemTranscribedSec: 0,
       preferredInputDeviceId: null,
+      includeSystemAudio: false,
 
       selectMeeting: (meetingId) =>
         set({ selectedMeetingId: meetingId, currentAudioTimeMs: 0 }),
@@ -108,7 +116,12 @@ export const useMeetingStore = create<MeetingStoreState>()(
 
       setRecordingTranscribedSec: (sec) => set({ recordingTranscribedSec: sec }),
 
+      setRecordingSystemTranscribedSec: (sec) =>
+        set({ recordingSystemTranscribedSec: sec }),
+
       setPreferredInputDeviceId: (id) => set({ preferredInputDeviceId: id }),
+
+      setIncludeSystemAudio: (include) => set({ includeSystemAudio: include }),
 
       createMeetingSession: ({
         title,
@@ -358,7 +371,9 @@ export const useMeetingStore = create<MeetingStoreState>()(
         calendarEvents: state.calendarEvents,
         settings: state.settings,
         recordingTranscribedSec: state.recordingTranscribedSec,
+        recordingSystemTranscribedSec: state.recordingSystemTranscribedSec,
         preferredInputDeviceId: state.preferredInputDeviceId,
+        includeSystemAudio: state.includeSystemAudio,
       }),
     }
   )
