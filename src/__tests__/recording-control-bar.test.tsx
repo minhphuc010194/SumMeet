@@ -8,6 +8,11 @@ import {
   within,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  isPermissionGranted,
+  requestPermission,
+  sendNotification,
+} from "@tauri-apps/plugin-notification";
 import { RecordingControlBar } from "@/components/recorder/RecordingControlBar";
 import { getDictionary } from "@/i18n/dictionaries";
 import { generateSummaryWithFallback } from "@/services/ai/provider-registry";
@@ -27,6 +32,15 @@ import type { MeetingSummary, TranscriptSegment } from "@/types/meeting";
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
   convertFileSrc: (path: string) => `asset://${path}`,
+}));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({ requestUserAttention: vi.fn() }),
+  UserAttentionType: { Critical: 1, Informational: 2 },
+}));
+vi.mock("@tauri-apps/plugin-notification", () => ({
+  isPermissionGranted: vi.fn(),
+  requestPermission: vi.fn(),
+  sendNotification: vi.fn(),
 }));
 vi.mock("@/services/audio/recording-commands", () => ({
   getActiveRecording: vi.fn(),
@@ -53,6 +67,9 @@ const tailMock = vi.mocked(transcribeRecordingTail);
 const summaryMock = vi.mocked(generateSummaryWithFallback);
 const subscribeMock = vi.mocked(subscribeMicActivity);
 const attentionMock = vi.mocked(requestCallAttention);
+const grantedMock = vi.mocked(isPermissionGranted);
+const requestPermissionMock = vi.mocked(requestPermission);
+const sendMock = vi.mocked(sendNotification);
 
 type ActiveRecordingResult = Awaited<ReturnType<typeof getActiveRecording>>;
 
@@ -300,6 +317,13 @@ describe("Call detection suggestion", () => {
     act(() => emitMicActivity(otherAppActive));
   }
 
+  async function useRealCallAttention() {
+    const actual = await vi.importActual<
+      typeof import("@/services/audio/mic-activity")
+    >("@/services/audio/mic-activity");
+    attentionMock.mockImplementationOnce(actual.requestCallAttention);
+  }
+
   async function renderBar() {
     render(<RecordingControlBar dict={dict} locale="vi" onToast={vi.fn()} />);
     await waitFor(() => expect(subscribeMock).toHaveBeenCalledTimes(1));
@@ -342,6 +366,46 @@ describe("Call detection suggestion", () => {
 
     expect(screen.getByText(dict.recorder.callDetectedTitle)).toBeTruthy();
     expect(attentionMock).toHaveBeenCalledTimes(1);
+    expect(attentionMock).toHaveBeenCalledWith({
+      title: dict.recorder.callDetectedTitle,
+      body: dict.recorder.callDetectedBody,
+    });
+  });
+
+  it("sends one localized OS notification on the rising edge", async () => {
+    grantedMock.mockResolvedValue(true);
+    await useRealCallAttention();
+    await renderBar();
+
+    emit(true);
+    emit(true);
+
+    await waitFor(() => expect(sendMock).toHaveBeenCalledTimes(1));
+    expect(sendMock).toHaveBeenCalledWith({
+      title: dict.recorder.callDetectedTitle,
+      body: dict.recorder.callDetectedBody,
+    });
+  });
+
+  it("still shows the suggestion and logs when the notification permission is denied", async () => {
+    grantedMock.mockResolvedValue(false);
+    requestPermissionMock.mockResolvedValue("denied");
+    await useRealCallAttention();
+    await renderBar();
+
+    emit(true);
+
+    await waitFor(() =>
+      expect(console.error).toHaveBeenCalledWith(
+        "[MicActivity] Operation failed:",
+        {
+          context: "sendNotification",
+          error: "notification_permission_denied",
+        }
+      )
+    );
+    expect(sendMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toBeTruthy();
   });
 
   it("hides the suggestion when the other app releases the microphone", async () => {
@@ -369,6 +433,10 @@ describe("Call detection suggestion", () => {
 
     expect(screen.getByRole("status")).toBeTruthy();
     expect(attentionMock).toHaveBeenCalledTimes(2);
+    expect(attentionMock).toHaveBeenLastCalledWith({
+      title: dict.recorder.callDetectedTitle,
+      body: dict.recorder.callDetectedBody,
+    });
   });
 
   it("starts recording from the suggestion and hides it", async () => {

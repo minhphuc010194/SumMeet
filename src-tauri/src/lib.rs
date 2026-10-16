@@ -54,6 +54,7 @@ fn list_audio_devices() -> Result<serde_json::Value, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .manage(mic::MicRecorder::default())
         .setup(|app| {

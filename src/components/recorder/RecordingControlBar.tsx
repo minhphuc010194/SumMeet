@@ -171,7 +171,10 @@ export function RecordingControlBar({
       }
       if (hasJustBecomeActive && canSuggestCallRef.current) {
         setIsCallSuggestionVisible(true);
-        void requestCallAttention();
+        void requestCallAttention({
+          title: dict.recorder.callDetectedTitle,
+          body: dict.recorder.callDetectedBody,
+        });
       }
     }).then((stop) => {
       if (cancelled) stop();
@@ -182,7 +185,7 @@ export function RecordingControlBar({
       cancelled = true;
       unsubscribe();
     };
-  }, []);
+  }, [dict]);
 
   useEffect(() => {
     refreshDevices(false);
