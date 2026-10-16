@@ -17,6 +17,7 @@ function showUpdate(
 ) {
   useUpdateStore.setState({
     update: UPDATE,
+    isDialogOpen: true,
     status: "idle",
     progress: null,
     dismissedVersion: null,
@@ -37,6 +38,7 @@ describe("UpdateDialog", () => {
   beforeEach(() => {
     useUpdateStore.setState({
       update: null,
+      isDialogOpen: false,
       status: "idle",
       progress: null,
       dismissedVersion: null,
@@ -44,6 +46,13 @@ describe("UpdateDialog", () => {
   });
 
   it("renders nothing when there is no update", () => {
+    render(<UpdateDialog locale="en" />);
+
+    expect(screen.queryByText(dict.title)).toBeNull();
+  });
+
+  it("renders nothing while the dialog is closed even if an update is known", () => {
+    showUpdate({ isDialogOpen: false });
     render(<UpdateDialog locale="en" />);
 
     expect(screen.queryByText(dict.title)).toBeNull();
@@ -70,7 +79,7 @@ describe("UpdateDialog", () => {
     expect(button(viDict.later)).toBeTruthy();
   });
 
-  it("hides the dialog for the version when Later is chosen", () => {
+  it("closes the dialog but keeps the update when Later is chosen", () => {
     showUpdate();
     renderDialog();
 
@@ -78,6 +87,7 @@ describe("UpdateDialog", () => {
 
     expect(screen.queryByText(dict.title)).toBeNull();
     expect(useUpdateStore.getState().dismissedVersion).toBe("1.1.0");
+    expect(useUpdateStore.getState().update).toBe(UPDATE);
   });
 
   it("shows an indeterminate bar and locks the actions while the size is unknown", () => {

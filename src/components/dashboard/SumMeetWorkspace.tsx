@@ -35,6 +35,11 @@ import { TranscriptViewer } from "@/components/meeting/TranscriptViewer";
 import { RecordingControlBar } from "@/components/recorder/RecordingControlBar";
 import { AIProviderSettingsModal } from "@/components/settings/AIProviderSettingsModal";
 import { UpdateDialog } from "@/components/update/UpdateDialog";
+import {
+  UpdateButton,
+  UpdateCheckPanel,
+  UpdateMenu,
+} from "@/components/update/UpdateEntryPoints";
 import { getDictionary } from "@/i18n/dictionaries";
 import type { SupportedLocale } from "@/types/meeting";
 import {
@@ -435,6 +440,8 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
             </div>
           </div>
 
+          <UpdateButton locale={locale} className="mr-3 mb-2 self-end" />
+
           {/* Bottom Sidebar Actions */}
           <div className="grid grid-cols-2 gap-2 border-t border-slate-800 p-3">
             <button
@@ -485,6 +492,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
           </button>
 
           <div className="ml-auto flex items-center gap-2 lg:mt-auto lg:ml-0 lg:flex-col">
+            <UpdateButton locale={locale} />
             {themeToggle}
             <button
               type="button"
@@ -759,6 +767,8 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
       />
 
       <UpdateDialog locale={locale} />
+      <UpdateCheckPanel locale={locale} />
+      <UpdateMenu locale={locale} />
     </div>
   );
 }
