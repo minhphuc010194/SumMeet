@@ -10,6 +10,7 @@ import {
   sendNotification,
 } from "@tauri-apps/plugin-notification";
 import {
+  announceCallDetection,
   requestCallAttention,
   subscribeCallActions,
   subscribeMicActivity,
@@ -197,6 +198,31 @@ describe("Mic activity service", () => {
     expect(errorSpy).toHaveBeenCalledWith("[MicActivity] Operation failed:", {
       context: "sendNotification",
       error: "no ipc",
+    });
+  });
+
+  it("sends the intro notification as plain title and body without asking for permission", async () => {
+    await announceCallDetection(NOTIFICATION);
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(sendMock).toHaveBeenCalledWith(NOTIFICATION);
+    expect(requestUserAttention).not.toHaveBeenCalled();
+    expect(grantedMock).not.toHaveBeenCalled();
+    expect(requestPermissionMock).not.toHaveBeenCalled();
+  });
+
+  it("logs the intro notification failure once instead of throwing or retrying", async () => {
+    sendMock.mockImplementation(() => {
+      throw new Error("plugin down");
+    });
+
+    await expect(announceCallDetection(NOTIFICATION)).resolves.toBeUndefined();
+
+    expect(sendMock).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).toHaveBeenCalledWith("[MicActivity] Operation failed:", {
+      context: "announceCallDetection",
+      error: "plugin down",
     });
   });
 

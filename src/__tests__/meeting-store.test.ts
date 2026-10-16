@@ -167,6 +167,67 @@ describe("Preferred input device", () => {
   });
 });
 
+describe("Call detection announcement", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useMeetingStore.setState({ hasAnnouncedCallDetection: false });
+  });
+
+  it("starts unannounced and is marked once announced", () => {
+    expect(useMeetingStore.getState().hasAnnouncedCallDetection).toBe(false);
+
+    useMeetingStore.getState().markCallDetectionAnnounced();
+
+    expect(useMeetingStore.getState().hasAnnouncedCallDetection).toBe(true);
+  });
+
+  it("is persisted and restored after a reload", async () => {
+    useMeetingStore.getState().markCallDetectionAnnounced();
+    const persisted = localStorage.getItem(STORAGE_KEY) ?? "";
+    expect(JSON.parse(persisted).state.hasAnnouncedCallDetection).toBe(true);
+
+    useMeetingStore.setState({ hasAnnouncedCallDetection: false });
+    localStorage.setItem(STORAGE_KEY, persisted);
+    await useMeetingStore.persist.rehydrate();
+
+    expect(useMeetingStore.getState().hasAnnouncedCallDetection).toBe(true);
+  });
+
+  it("defaults to false for state saved before the announcement existed", async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 2,
+        state: {
+          meetings: [],
+          selectedMeetingId: "",
+          calendarEvents: [],
+          settings: {
+            openRouterModel: "google/gemini-3.1-flash-lite",
+            transcriptionLanguage: "vi",
+            callDetectionEnabled: true,
+          },
+          recordingTranscribedSec: 0,
+          preferredInputDeviceId: null,
+        },
+      })
+    );
+
+    await useMeetingStore.persist.rehydrate();
+
+    expect(useMeetingStore.getState().hasAnnouncedCallDetection).toBe(false);
+  });
+
+  it("never persists the OpenRouter key alongside the flag", () => {
+    useMeetingStore.setState({ openRouterKey: "sk-or-v1-secret-value" });
+    useMeetingStore.getState().markCallDetectionAnnounced();
+
+    const persisted = localStorage.getItem(STORAGE_KEY) ?? "";
+    expect(JSON.parse(persisted).state).not.toHaveProperty("openRouterKey");
+    expect(persisted).not.toContain("sk-or-v1-secret");
+  });
+});
+
 describe("Call detection setting", () => {
   const SAVED_SETTINGS = {
     openRouterModel: "custom/model",
