@@ -83,7 +83,56 @@ fn input_processes() -> Result<Vec<(i32, u32)>, i32> {
         .collect())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+fn input_processes() -> Result<Vec<(i32, u32)>, i32> {
+    use windows::core::{Interface, HRESULT};
+    use windows::Win32::Media::Audio::{
+        eCapture, AudioSessionStateActive, IAudioSessionControl2, IAudioSessionManager2,
+        IMMDeviceEnumerator, MMDeviceEnumerator, DEVICE_STATE_ACTIVE,
+    };
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CLSCTX_ALL, COINIT_MULTITHREADED,
+    };
+
+    thread_local! {
+        static COM_INIT: HRESULT = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+    }
+
+    (|| -> windows::core::Result<Vec<(i32, u32)>> {
+        COM_INIT.with(|result| result.ok())?;
+        let mut processes = Vec::new();
+        unsafe {
+            let enumerator =
+                CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
+            let devices = enumerator.EnumAudioEndpoints(eCapture, DEVICE_STATE_ACTIVE)?;
+            for device in 0..devices.GetCount()? {
+                let Ok(sessions) = devices
+                    .Item(device)
+                    .and_then(|device| device.Activate::<IAudioSessionManager2>(CLSCTX_ALL, None))
+                    .and_then(|manager| manager.GetSessionEnumerator())
+                else {
+                    continue;
+                };
+                processes.extend((0..sessions.GetCount().unwrap_or_default()).filter_map(
+                    |index| {
+                        let session = sessions.GetSession(index).ok()?;
+                        let running_input = session.GetState().ok()? == AudioSessionStateActive;
+                        let pid = session
+                            .cast::<IAudioSessionControl2>()
+                            .ok()?
+                            .GetProcessId()
+                            .ok()?;
+                        Some((pid as i32, running_input as u32))
+                    },
+                ));
+            }
+        }
+        Ok(processes)
+    })()
+    .map_err(|error| error.code().0)
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
 fn input_processes() -> Result<Vec<(i32, u32)>, i32> {
     Ok(Vec::new())
 }
@@ -106,7 +155,7 @@ pub fn spawn_watcher(app: AppHandle) {
                 }
                 Err(status) => {
                     if last_error != Some(status) {
-                        eprintln!("[MicActivity] CoreAudio query failed: OSStatus {status}");
+                        eprintln!("[MicActivity] Audio input query failed: status {status}");
                         last_error = Some(status);
                     }
                     false
