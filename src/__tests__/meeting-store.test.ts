@@ -226,3 +226,90 @@ describe("Call detection setting", () => {
     expect(localStorage.getItem(STORAGE_KEY)).not.toContain("sk-or-v1-secret");
   });
 });
+
+describe("System audio capture settings", () => {
+  const LEGACY_STATE = {
+    version: 1,
+    state: {
+      meetings: [],
+      selectedMeetingId: "",
+      calendarEvents: [],
+      settings: {
+        openRouterModel: "google/gemini-3.1-flash-lite",
+        transcriptionLanguage: "vi",
+      },
+      recordingTranscribedSec: 0,
+      preferredInputDeviceId: null,
+    },
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+    useMeetingStore.getState().setIncludeSystemAudio(false);
+    useMeetingStore.getState().setRecordingSystemTranscribedSec(0);
+  });
+
+  it("persists the include-system-audio choice across a reload", async () => {
+    useMeetingStore.getState().setIncludeSystemAudio(true);
+    const persisted = localStorage.getItem(STORAGE_KEY) ?? "";
+    expect(JSON.parse(persisted).state.includeSystemAudio).toBe(true);
+
+    useMeetingStore.getState().setIncludeSystemAudio(false);
+    localStorage.setItem(STORAGE_KEY, persisted);
+    await useMeetingStore.persist.rehydrate();
+
+    expect(useMeetingStore.getState().includeSystemAudio).toBe(true);
+  });
+
+  it("persists the system track offset next to the mic offset", async () => {
+    useMeetingStore.getState().setRecordingTranscribedSec(95);
+    useMeetingStore.getState().setRecordingSystemTranscribedSec(40);
+    const persisted = localStorage.getItem(STORAGE_KEY) ?? "";
+    expect(JSON.parse(persisted).state).toMatchObject({
+      recordingTranscribedSec: 95,
+      recordingSystemTranscribedSec: 40,
+    });
+
+    useMeetingStore.getState().setRecordingTranscribedSec(0);
+    useMeetingStore.getState().setRecordingSystemTranscribedSec(0);
+    localStorage.setItem(STORAGE_KEY, persisted);
+    await useMeetingStore.persist.rehydrate();
+
+    expect(useMeetingStore.getState().recordingTranscribedSec).toBe(95);
+    expect(useMeetingStore.getState().recordingSystemTranscribedSec).toBe(40);
+  });
+
+  it("keeps the saved recording fields when an older state version migrates", async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        state: {
+          ...LEGACY_STATE.state,
+          preferredInputDeviceId: "coreaudio:usb-mic",
+          includeSystemAudio: true,
+          recordingTranscribedSec: 95,
+          recordingSystemTranscribedSec: 40,
+        },
+      })
+    );
+
+    await useMeetingStore.persist.rehydrate();
+
+    expect(useMeetingStore.getState()).toMatchObject({
+      preferredInputDeviceId: "coreaudio:usb-mic",
+      includeSystemAudio: true,
+      recordingTranscribedSec: 95,
+      recordingSystemTranscribedSec: 40,
+    });
+  });
+
+  it("defaults to off and zero for state saved before system audio existed", async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(LEGACY_STATE));
+
+    await useMeetingStore.persist.rehydrate();
+
+    expect(useMeetingStore.getState().includeSystemAudio).toBe(false);
+    expect(useMeetingStore.getState().recordingSystemTranscribedSec).toBe(0);
+  });
+});

@@ -8,8 +8,8 @@ mod recordings;
 use tauri::Manager;
 
 use audio::audio_engine::{
-    compute_dual_stream_routing, list_system_audio_devices, AudioDeviceInfo,
-    DualStreamRoutingSnapshot,
+    compute_dual_stream_routing, list_system_audio_devices, system_audio_supported,
+    AudioDeviceInfo, DualStreamRoutingSnapshot,
 };
 
 /// Returns all system audio devices and automatically classifies AirPods / Headphones.
@@ -48,6 +48,7 @@ fn list_audio_devices() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
         "devices": get_audio_devices_inventory(),
         "routing": get_current_dual_stream_routing(),
+        "system_audio_supported": system_audio_supported(),
     }))
 }
 

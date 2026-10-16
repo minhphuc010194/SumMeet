@@ -28,8 +28,12 @@ import {
   getActiveRecording,
   startMicRecording,
   stopMicRecording,
+  type ActiveRecordingStatus,
 } from "@/services/audio/recording-commands";
-import { transcribeRecordingTail } from "@/services/audio/recording-transcription";
+import {
+  transcribeRecordingSlice,
+  transcribeRecordingTail,
+} from "@/services/audio/recording-transcription";
 import { useMeetingStore } from "@/store/meeting-store";
 import type { MeetingSummary, TranscriptSegment } from "@/types/meeting";
 
@@ -77,6 +81,7 @@ const invokeMock = vi.mocked(invoke);
 const activeMock = vi.mocked(getActiveRecording);
 const startMock = vi.mocked(startMicRecording);
 const stopMock = vi.mocked(stopMicRecording);
+const sliceMock = vi.mocked(transcribeRecordingSlice);
 const tailMock = vi.mocked(transcribeRecordingTail);
 const summaryMock = vi.mocked(generateSummaryWithFallback);
 const subscribeMock = vi.mocked(subscribeMicActivity);
@@ -94,6 +99,7 @@ const dict = getDictionary("vi");
 const dictEn = getDictionary("en");
 const WAV_PATH = "/recordings/mtg.wav";
 const PERSISTED_OFFSET_SEC = 95;
+const PERSISTED_SYSTEM_OFFSET_SEC = 40;
 const STORAGE_KEY = "summarize-bot-clean-v4";
 const BUILT_IN_MIC = { id: "coreaudio:built-in", name: "MacBook Pro Microphone" };
 const USB_MIC = { id: "coreaudio:usb", name: "USB Podcast Mic" };
@@ -101,7 +107,10 @@ const STARTED = {
   meetingId: "mtg-started",
   wavPath: WAV_PATH,
   startedAtMs: 0,
+  hasSystemAudio: false,
+  systemAudioError: null,
 };
+const STARTED_WITH_SYSTEM_AUDIO = { ...STARTED, hasSystemAudio: true };
 const DEVICE_INVENTORY = {
   devices: [
     { ...BUILT_IN_MIC, is_input: true, is_default: true },
@@ -112,6 +121,10 @@ const DEVICE_INVENTORY = {
     active_input_device: BUILT_IN_MIC.name,
     active_output_device: "MacBook Pro Speakers",
   },
+};
+const SYSTEM_AUDIO_INVENTORY = {
+  ...DEVICE_INVENTORY,
+  system_audio_supported: true,
 };
 
 function segmentFor(meetingId: string): TranscriptSegment {
@@ -144,7 +157,12 @@ function summaryFor(meetingId: string): MeetingSummary {
   };
 }
 
-async function recoverAndStopRecording(whileRecording?: () => void) {
+async function recoverAndStopRecording(
+  options: {
+    whileRecording?: () => void;
+    activeOverrides?: Partial<ActiveRecordingStatus>;
+  } = {}
+) {
   const meeting = useMeetingStore.getState().createMeetingSession({
     title: "Daily",
     audioDeviceUsed: "Mic",
@@ -152,14 +170,20 @@ async function recoverAndStopRecording(whileRecording?: () => void) {
     locale: "vi",
   });
   useMeetingStore.getState().setRecordingTranscribedSec(PERSISTED_OFFSET_SEC);
+  useMeetingStore
+    .getState()
+    .setRecordingSystemTranscribedSec(PERSISTED_SYSTEM_OFFSET_SEC);
   activeMock.mockResolvedValue({
     success: true,
     data: {
       meetingId: meeting.id,
       wavPath: WAV_PATH,
       startedAtMs: 0,
+      hasSystemAudio: false,
       elapsedSec: 400,
       level: 0.1,
+      systemLevel: 0,
+      ...options.activeOverrides,
     },
   });
   stopMock.mockResolvedValue({
@@ -182,7 +206,7 @@ async function recoverAndStopRecording(whileRecording?: () => void) {
   const stopButton = await screen.findByRole("button", {
     name: dict.recorder.stopRecording,
   });
-  whileRecording?.();
+  options.whileRecording?.();
   fireEvent.click(stopButton);
   await waitFor(() =>
     expect(
@@ -212,6 +236,35 @@ describe("Recording control bar after a reload", () => {
       startSec: PERSISTED_OFFSET_SEC,
       locale: "vi",
       transcriptionLanguage: "vi",
+    });
+  });
+
+  it("drains only the default file without a track when the recording has no system audio", async () => {
+    tailMock.mockResolvedValue({ success: true });
+
+    await recoverAndStopRecording();
+
+    expect(tailMock).toHaveBeenCalledTimes(1);
+    expect(tailMock.mock.calls[0][0]).not.toHaveProperty("track");
+  });
+
+  it("drains the mic and system tails from their own persisted offsets after a reload", async () => {
+    tailMock.mockResolvedValue({ success: true });
+
+    const { meeting } = await recoverAndStopRecording({
+      activeOverrides: { hasSystemAudio: true },
+    });
+
+    expect(tailMock).toHaveBeenCalledTimes(2);
+    expect(tailMock.mock.calls[0][0]).toMatchObject({
+      meetingId: meeting.id,
+      track: "mic",
+      startSec: PERSISTED_OFFSET_SEC,
+    });
+    expect(tailMock.mock.calls[1][0]).toMatchObject({
+      meetingId: meeting.id,
+      track: "system",
+      startSec: PERSISTED_SYSTEM_OFFSET_SEC,
     });
   });
 
@@ -274,8 +327,10 @@ describe("Recording control bar after a reload", () => {
         meetingId,
         wavPath: WAV_PATH,
         startedAtMs: 0,
+        hasSystemAudio: false,
         elapsedSec: 12,
         level: 0.1,
+        systemLevel: 0,
       },
     });
     stopMock.mockResolvedValue({
@@ -332,8 +387,10 @@ describe("Recording control bar after a reload", () => {
         meetingId: meeting.id,
         wavPath: WAV_PATH,
         startedAtMs: 0,
+        hasSystemAudio: false,
         elapsedSec: 400,
         level: 0.1,
+        systemLevel: 0,
       },
     });
     await screen.findByRole("button", { name: dict.recorder.stopRecording });
@@ -417,11 +474,17 @@ describe("Call detection suggestion", () => {
     useMeetingStore.setState({
       meetings: [],
       selectedMeetingId: "",
+      preferredInputDeviceId: null,
+      includeSystemAudio: false,
       settings: {
         ...useMeetingStore.getState().settings,
         callDetectionEnabled: true,
       },
     });
+  });
+
+  afterEach(() => {
+    invokeMock.mockReset();
   });
 
   it("suggests recording once when another app starts using the microphone", async () => {
@@ -510,7 +573,7 @@ describe("Call detection suggestion", () => {
   it("starts recording from the suggestion and hides it", async () => {
     startMock.mockResolvedValue({
       success: true,
-      data: { meetingId: "mtg-call", wavPath: WAV_PATH, startedAtMs: 0 },
+      data: { ...STARTED, meetingId: "mtg-call" },
     });
     await renderBar();
     emit(true);
@@ -526,6 +589,44 @@ describe("Call detection suggestion", () => {
     expect(startMock.mock.calls[0][0]).toMatchObject({ locale: "vi" });
     await screen.findByRole("button", { name: dict.recorder.stopRecording });
   });
+
+  it.each([
+    [
+      "suggestion button",
+      () =>
+        fireEvent.click(
+          within(screen.getByRole("status")).getByRole("button", {
+            name: dict.recorder.callDetectedStart,
+          })
+        ),
+    ],
+    ["notification Record button", () => recordFromActionButton()],
+  ])(
+    "starts from the %s with the saved microphone and system audio choice",
+    async (_, trigger) => {
+      invokeMock.mockResolvedValue(SYSTEM_AUDIO_INVENTORY);
+      useMeetingStore.setState({
+        preferredInputDeviceId: USB_MIC.id,
+        includeSystemAudio: true,
+      });
+      startMock.mockResolvedValue({
+        success: true,
+        data: STARTED_WITH_SYSTEM_AUDIO,
+      });
+      await renderBar();
+      emit(true);
+
+      trigger();
+
+      await screen.findByRole("button", { name: dict.recorder.stopRecording });
+      expect(startMock).toHaveBeenCalledTimes(1);
+      expect(startMock.mock.calls[0][0]).toMatchObject({
+        inputDeviceId: USB_MIC.id,
+        includeSystemAudio: true,
+      });
+      expect(screen.getByText(dict.recorder.systemSignal)).toBeTruthy();
+    }
+  );
 
   it("stays silent when call detection is turned off", async () => {
     useMeetingStore.setState({
@@ -545,14 +646,14 @@ describe("Call detection suggestion", () => {
   it("ignores microphone activity while its own recording is running", async () => {
     tailMock.mockResolvedValue({ success: true });
 
-    await recoverAndStopRecording(() => emit(true));
+    await recoverAndStopRecording({ whileRecording: () => emit(true) });
 
     expect(attentionMock).not.toHaveBeenCalled();
   });
 
   it("does not suggest again when a recording ends while the other app is still active", async () => {
     tailMock.mockResolvedValue({ success: true });
-    await recoverAndStopRecording(() => emit(true));
+    await recoverAndStopRecording({ whileRecording: () => emit(true) });
     const startButton = (await screen.findByRole("button", {
       name: dict.recorder.startRecording,
     })) as HTMLButtonElement;
@@ -573,7 +674,7 @@ describe("Call detection suggestion", () => {
   it("starts recording from the notification Record button and hides the suggestion", async () => {
     startMock.mockResolvedValue({
       success: true,
-      data: { meetingId: "mtg-call", wavPath: WAV_PATH, startedAtMs: 0 },
+      data: { ...STARTED, meetingId: "mtg-call" },
     });
     await renderBar();
     emit(true);
@@ -589,7 +690,7 @@ describe("Call detection suggestion", () => {
   it("does not start a second recording from the notification while recording", async () => {
     startMock.mockResolvedValue({
       success: true,
-      data: { meetingId: "mtg-call", wavPath: WAV_PATH, startedAtMs: 0 },
+      data: { ...STARTED, meetingId: "mtg-call" },
     });
     await renderBar();
     emit(true);
@@ -605,7 +706,7 @@ describe("Call detection suggestion", () => {
   it("does not start a recording from the notification while a result is processing", async () => {
     startMock.mockResolvedValue({
       success: true,
-      data: { meetingId: "mtg-call", wavPath: WAV_PATH, startedAtMs: 0 },
+      data: { ...STARTED, meetingId: "mtg-call" },
     });
     stopMock.mockReturnValue(new Promise(() => {}));
     await renderBar();
@@ -624,7 +725,7 @@ describe("Call detection suggestion", () => {
   it("does not start a recording from the notification until recovery finishes", async () => {
     startMock.mockResolvedValue({
       success: true,
-      data: { meetingId: "mtg-call", wavPath: WAV_PATH, startedAtMs: 0 },
+      data: { ...STARTED, meetingId: "mtg-call" },
     });
     let finishRecovery: (value: ActiveRecordingResult) => void = () => {};
     activeMock.mockReturnValue(
@@ -900,5 +1001,396 @@ describe("Recording microphone picker", () => {
     expect(startMock.mock.calls[0][0]).toMatchObject({
       inputDeviceId: USB_MIC.id,
     });
+  });
+});
+
+describe("Recording system audio", () => {
+  const MIC_SEGMENT_SEC = 8;
+  const SYSTEM_SEGMENT_SEC = 6;
+
+  function useFakeClock() {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+  }
+
+  function advance(ms: number) {
+    return act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  }
+
+  function activeStatus(overrides: Partial<ActiveRecordingStatus> = {}) {
+    return {
+      success: true,
+      data: {
+        meetingId: STARTED.meetingId,
+        wavPath: WAV_PATH,
+        startedAtMs: 0,
+        hasSystemAudio: true,
+        elapsedSec: 30,
+        level: 0.1,
+        systemLevel: 0,
+        ...overrides,
+      },
+    };
+  }
+
+  function silentHintToasts(onToast: ReturnType<typeof vi.fn>) {
+    return onToast.mock.calls.filter(
+      ([message]) => message === dict.recorder.systemAudioSilentHint
+    );
+  }
+
+  async function renderBar(onToast = vi.fn()) {
+    render(<RecordingControlBar dict={dict} locale="vi" onToast={onToast} />);
+    const toggle = (await screen.findByRole("switch", {
+      name: dict.recorder.includeSystemAudio,
+    })) as HTMLButtonElement;
+    const startButton = (await screen.findByRole("button", {
+      name: dict.recorder.startRecording,
+    })) as HTMLButtonElement;
+    await waitFor(() => expect(startButton.disabled).toBe(false));
+    return { toggle, startButton, onToast };
+  }
+
+  async function startRecording(startButton: HTMLButtonElement) {
+    fireEvent.click(startButton);
+    await screen.findByRole("button", { name: dict.recorder.stopRecording });
+    return startMock.mock.calls[0][0].meetingId;
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    useMeetingStore.setState({
+      meetings: [],
+      selectedMeetingId: "",
+      preferredInputDeviceId: null,
+      includeSystemAudio: false,
+      recordingTranscribedSec: 0,
+      recordingSystemTranscribedSec: 0,
+    });
+    invokeMock.mockResolvedValue(SYSTEM_AUDIO_INVENTORY);
+    activeMock.mockResolvedValue({ success: true, data: null });
+    startMock.mockResolvedValue({ success: true, data: STARTED });
+    sliceMock.mockImplementation(async ({ meetingId, startSec, track }) => {
+      const isSystem = track === "system";
+      return {
+        success: true,
+        data: {
+          segments: [
+            {
+              ...segmentFor(meetingId),
+              id: `live-${track ?? "default"}-${startSec}`,
+              channel: isSystem ? "system_remote" : "mic_user",
+            },
+          ],
+          nextStartSec:
+            startSec + (isSystem ? SYSTEM_SEGMENT_SEC : MIC_SEGMENT_SEC),
+        },
+      };
+    });
+    tailMock.mockResolvedValue({ success: true });
+    stopMock.mockResolvedValue({
+      success: true,
+      data: {
+        meetingId: STARTED.meetingId,
+        fileName: "mtg.wav",
+        wavPath: WAV_PATH,
+        sizeBytes: 1,
+        createdAtMs: 0,
+        durationSec: 12,
+      },
+    });
+    summaryMock.mockImplementation(async ({ meetingId }) => ({
+      success: true,
+      data: summaryFor(meetingId),
+    }));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    invokeMock.mockReset();
+  });
+
+  it("disables the toggle and explains why when the platform cannot capture system audio", async () => {
+    invokeMock.mockResolvedValue(DEVICE_INVENTORY);
+
+    const { toggle } = await renderBar();
+
+    expect(toggle.disabled).toBe(true);
+    expect(toggle.title).toBe(dict.recorder.systemAudioUnsupported);
+  });
+
+  it("enables the toggle on a supported platform", async () => {
+    const { toggle } = await renderBar();
+
+    expect(toggle.disabled).toBe(false);
+    expect(toggle.title).toBe("");
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("persists the choice and shows the permission hint only when turning it on", async () => {
+    const { toggle, onToast } = await renderBar();
+
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
+    expect(useMeetingStore.getState().includeSystemAudio).toBe(true);
+    expect(
+      JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "").state.includeSystemAudio
+    ).toBe(true);
+    expect(onToast).toHaveBeenCalledTimes(1);
+    expect(onToast).toHaveBeenCalledWith(dict.recorder.systemAudioPermissionHint);
+
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(useMeetingStore.getState().includeSystemAudio).toBe(false);
+    expect(onToast).toHaveBeenCalledTimes(1);
+  });
+
+  it("is disabled while a recording is running", async () => {
+    const { toggle, startButton } = await renderBar();
+
+    await startRecording(startButton);
+
+    expect(toggle.disabled).toBe(true);
+  });
+
+  it.each([
+    ["is supported and on", SYSTEM_AUDIO_INVENTORY, true, true],
+    ["is supported and off", SYSTEM_AUDIO_INVENTORY, false, false],
+    ["is on but unsupported", DEVICE_INVENTORY, true, false],
+  ])(
+    "starts with the right system audio option when it %s",
+    async (_, inventory, stored, sent) => {
+      invokeMock.mockResolvedValue(inventory);
+      useMeetingStore.setState({ includeSystemAudio: stored });
+      const { startButton } = await renderBar();
+
+      await startRecording(startButton);
+
+      expect(startMock.mock.calls[0][0]).toMatchObject({
+        includeSystemAudio: sent,
+      });
+    }
+  );
+
+  it("starts without system audio when the saved choice is on but the platform reports it unsupported", async () => {
+    invokeMock.mockResolvedValue({
+      ...DEVICE_INVENTORY,
+      system_audio_supported: false,
+    });
+    useMeetingStore.setState({ includeSystemAudio: true });
+    const { startButton } = await renderBar();
+
+    await startRecording(startButton);
+
+    expect(startMock).toHaveBeenCalledTimes(1);
+    expect(startMock.mock.calls[0][0]).toMatchObject({
+      includeSystemAudio: false,
+    });
+  });
+
+  it("keeps recording the microphone and says so when system audio could not start", async () => {
+    useMeetingStore.setState({ includeSystemAudio: true });
+    startMock.mockResolvedValue({
+      success: true,
+      data: { ...STARTED, systemAudioError: "system_audio_failed" },
+    });
+    const { startButton, onToast } = await renderBar();
+
+    await startRecording(startButton);
+
+    expect(onToast).toHaveBeenCalledWith(dict.recorder.systemAudioUnavailable);
+    expect(screen.queryByText(dict.recorder.systemSignal)).toBeNull();
+    expect(screen.getByText(dict.recorder.audioSignal)).toBeTruthy();
+    expect(useMeetingStore.getState().meetings).toHaveLength(1);
+  });
+
+  it("shows the system meter fed by the polled system level only when the recording has system audio", async () => {
+    useFakeClock();
+    startMock.mockResolvedValue({ success: true, data: STARTED_WITH_SYSTEM_AUDIO });
+    const { startButton } = await renderBar();
+    activeMock.mockResolvedValue(activeStatus({ systemLevel: 0.5 }));
+
+    await startRecording(startButton);
+    await advance(500);
+
+    const fill = screen.getByText(dict.recorder.systemSignal).nextElementSibling
+      ?.firstElementChild as HTMLElement;
+    expect(fill.style.width).toBe("50%");
+  });
+
+  it("transcribes the mic and system tracks from separate offsets on every live tick", async () => {
+    useFakeClock();
+    startMock.mockResolvedValue({ success: true, data: STARTED_WITH_SYSTEM_AUDIO });
+    const { startButton } = await renderBar();
+    const meetingId = await startRecording(startButton);
+
+    await advance(5000);
+
+    expect(sliceMock.mock.calls.map(([call]) => [call.track, call.startSec])).toEqual([
+      ["mic", 0],
+      ["system", 0],
+    ]);
+    expect(useMeetingStore.getState().recordingTranscribedSec).toBe(MIC_SEGMENT_SEC);
+    expect(useMeetingStore.getState().recordingSystemTranscribedSec).toBe(
+      SYSTEM_SEGMENT_SEC
+    );
+
+    await advance(5000);
+
+    expect(sliceMock.mock.calls.slice(2).map(([call]) => [call.track, call.startSec])).toEqual([
+      ["mic", MIC_SEGMENT_SEC],
+      ["system", SYSTEM_SEGMENT_SEC],
+    ]);
+    const meeting = useMeetingStore
+      .getState()
+      .meetings.find((m) => m.id === meetingId);
+    expect(meeting?.segments.map((seg) => seg.channel)).toEqual([
+      "mic_user",
+      "system_remote",
+      "mic_user",
+      "system_remote",
+    ]);
+  });
+
+  it("keeps the single default-file call without a track when the recording has no system audio", async () => {
+    useFakeClock();
+    const { startButton } = await renderBar();
+    await startRecording(startButton);
+
+    await advance(5000);
+
+    expect(sliceMock).toHaveBeenCalledTimes(1);
+    expect(sliceMock.mock.calls[0][0]).toMatchObject({ startSec: 0, minSliceSec: 3 });
+    expect(sliceMock.mock.calls[0][0]).not.toHaveProperty("track");
+    expect(useMeetingStore.getState().recordingSystemTranscribedSec).toBe(0);
+  });
+
+  it("resumes both tracks from their persisted offsets after a reload", async () => {
+    useFakeClock();
+    const meeting = useMeetingStore.getState().createMeetingSession({
+      title: "Daily",
+      audioDeviceUsed: "Mic",
+      isHeadphoneSession: false,
+      locale: "vi",
+    });
+    useMeetingStore.getState().setRecordingTranscribedSec(PERSISTED_OFFSET_SEC);
+    useMeetingStore
+      .getState()
+      .setRecordingSystemTranscribedSec(PERSISTED_SYSTEM_OFFSET_SEC);
+    activeMock.mockResolvedValue(activeStatus({ meetingId: meeting.id }));
+
+    render(<RecordingControlBar dict={dict} locale="vi" onToast={vi.fn()} />);
+    await screen.findByRole("button", { name: dict.recorder.stopRecording });
+    await advance(5000);
+
+    expect(screen.getByText(dict.recorder.systemSignal)).toBeTruthy();
+    expect(sliceMock.mock.calls.map(([call]) => [call.track, call.startSec])).toEqual([
+      ["mic", PERSISTED_OFFSET_SEC],
+      ["system", PERSISTED_SYSTEM_OFFSET_SEC],
+    ]);
+  });
+
+  it("drains the mic tail then the system tail from where the live ticks stopped", async () => {
+    useFakeClock();
+    startMock.mockResolvedValue({ success: true, data: STARTED_WITH_SYSTEM_AUDIO });
+    tailMock.mockImplementation(async ({ meetingId, track, onSegments }) => {
+      onSegments([
+        {
+          ...segmentFor(meetingId),
+          id: `tail-${track}`,
+          channel: track === "system" ? "system_remote" : "mic_user",
+        },
+      ]);
+      return { success: true };
+    });
+    const { startButton } = await renderBar();
+    const meetingId = await startRecording(startButton);
+    await advance(5000);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dict.recorder.stopRecording })
+    );
+    await advance(0);
+
+    expect(tailMock.mock.calls.map(([call]) => [call.track, call.startSec])).toEqual([
+      ["mic", MIC_SEGMENT_SEC],
+      ["system", SYSTEM_SEGMENT_SEC],
+    ]);
+    const meeting = useMeetingStore
+      .getState()
+      .meetings.find((m) => m.id === meetingId);
+    expect(meeting?.status).toBe("completed");
+    expect(meeting?.segments.map((seg) => seg.id).slice(-2)).toEqual([
+      "tail-mic",
+      "tail-system",
+    ]);
+  });
+
+  it("still drains the system tail when the mic tail fails", async () => {
+    useFakeClock();
+    startMock.mockResolvedValue({ success: true, data: STARTED_WITH_SYSTEM_AUDIO });
+    tailMock.mockResolvedValueOnce({ success: false, error: "tail failed" });
+    const { startButton, onToast } = await renderBar();
+    await startRecording(startButton);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dict.recorder.stopRecording })
+    );
+    await advance(0);
+
+    expect(onToast).toHaveBeenCalledWith("tail failed");
+    expect(tailMock.mock.calls.map(([call]) => call.track)).toEqual([
+      "mic",
+      "system",
+    ]);
+  });
+
+  it("hints once after a minute of silent system audio", async () => {
+    useFakeClock();
+    startMock.mockResolvedValue({ success: true, data: STARTED_WITH_SYSTEM_AUDIO });
+    const { startButton, onToast } = await renderBar();
+    activeMock.mockResolvedValue(activeStatus());
+    await startRecording(startButton);
+
+    await advance(59_000);
+    expect(silentHintToasts(onToast)).toHaveLength(0);
+
+    await advance(2000);
+    expect(silentHintToasts(onToast)).toHaveLength(1);
+
+    await advance(120_000);
+    expect(silentHintToasts(onToast)).toHaveLength(1);
+  });
+
+  it("counts the minute of silence from the last time system audio was heard", async () => {
+    useFakeClock();
+    startMock.mockResolvedValue({ success: true, data: STARTED_WITH_SYSTEM_AUDIO });
+    const { startButton, onToast } = await renderBar();
+    activeMock.mockResolvedValue(activeStatus({ systemLevel: 0.3 }));
+    await startRecording(startButton);
+    await advance(50_000);
+
+    activeMock.mockResolvedValue(activeStatus());
+    await advance(55_000);
+    expect(silentHintToasts(onToast)).toHaveLength(0);
+
+    await advance(10_000);
+    expect(silentHintToasts(onToast)).toHaveLength(1);
+  });
+
+  it("never hints about system audio when the recording has none", async () => {
+    useFakeClock();
+    const { startButton, onToast } = await renderBar();
+    activeMock.mockResolvedValue(activeStatus({ hasSystemAudio: false }));
+    await startRecording(startButton);
+
+    await advance(120_000);
+
+    expect(silentHintToasts(onToast)).toHaveLength(0);
   });
 });
