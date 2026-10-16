@@ -4,5 +4,7 @@
 <dict>
   <key>NSMicrophoneUsageDescription</key>
   <string>SumMeet records your microphone to transcribe and summarize your meetings.</string>
+  <key>NSAudioCaptureUsageDescription</key>
+  <string>SumMeet records the audio your computer plays, such as other people in a call, when you turn on system audio for a recording.</string>
 </dict>
 </plist>

@@ -82,6 +82,43 @@ describe("Live recording slice transcription", () => {
     });
   });
 
+  it.each([
+    ["mic", "mic_user"],
+    ["system", "system_remote"],
+  ] as const)(
+    "reads the %s track and sends it as the %s channel",
+    async (track, channel) => {
+      readSliceMock.mockResolvedValue({ success: true, data: wavOfSeconds(8) });
+      transcribeMock.mockResolvedValue({
+        success: true,
+        data: { segments: [], providerUsed: "OpenRouter" },
+      });
+
+      await transcribeRecordingSlice({ ...BASE_PARAMS, track });
+
+      expect(readSliceMock).toHaveBeenCalledWith(
+        expect.objectContaining({ meetingId: "mtg-1", startSec: 20, track })
+      );
+      expect(transcribeMock.mock.calls[0][0]).toMatchObject({
+        channel,
+        startOffsetSec: 20,
+      });
+    }
+  );
+
+  it("reads the default file as the mic channel when no track is given", async () => {
+    readSliceMock.mockResolvedValue({ success: true, data: wavOfSeconds(8) });
+    transcribeMock.mockResolvedValue({
+      success: true,
+      data: { segments: [], providerUsed: "OpenRouter" },
+    });
+
+    await transcribeRecordingSlice(BASE_PARAMS);
+
+    expect(readSliceMock.mock.calls[0][0].track).toBeUndefined();
+    expect(transcribeMock.mock.calls[0][0].channel).toBe("mic_user");
+  });
+
   it("skips an empty slice without calling OpenRouter", async () => {
     readSliceMock.mockResolvedValue({ success: true, data: "" });
 
@@ -185,6 +222,29 @@ describe("Recording tail transcription after stop", () => {
     ]);
     expect(transcribeMock.mock.calls[0][0].transcriptionLanguage).toBe("en");
     expect(delivered).toEqual(["at 20", "at 200", "at 380"]);
+  });
+
+  it("drains the system track as the system channel", async () => {
+    stubRecordingOfSeconds(30);
+    transcribeMock.mockImplementation(async ({ startOffsetSec }) => ({
+      success: true,
+      data: { segments: [segmentAt(startOffsetSec)], providerUsed: "OpenRouter" },
+    }));
+    const delivered: string[] = [];
+
+    const result = await transcribeRecordingTail({
+      ...TAIL_PARAMS,
+      startSec: 10,
+      track: "system",
+      onSegments: (segments) => delivered.push(...segments.map((s) => s.text)),
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(readSliceMock.mock.calls.every(([call]) => call.track === "system")).toBe(
+      true
+    );
+    expect(transcribeMock.mock.calls[0][0].channel).toBe("system_remote");
+    expect(delivered).toEqual(["at 10"]);
   });
 
   it("returns the error without throwing and keeps segments delivered before the failure", async () => {

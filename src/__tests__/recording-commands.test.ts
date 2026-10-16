@@ -35,26 +35,52 @@ describe("Recording command wrappers", () => {
   });
 
   it.each([
-    ["the chosen device id", "coreaudio:usb-mic"],
-    ["null for the system default", null],
-  ])("starts a recording with the meeting id and %s", async (_, inputDeviceId) => {
+    ["the chosen device id", "coreaudio:usb-mic", true],
+    ["null for the system default", null, false],
+  ])(
+    "starts a recording with the meeting id and %s",
+    async (_, inputDeviceId, includeSystemAudio) => {
+      const started = {
+        meetingId: "mtg-1",
+        wavPath: RECORDING_FILE.wavPath,
+        startedAtMs: 1700000000000,
+        hasSystemAudio: includeSystemAudio,
+        systemAudioError: null,
+      };
+      invokeMock.mockResolvedValue(started);
+
+      const result = await startMicRecording({
+        meetingId: "mtg-1",
+        inputDeviceId,
+        includeSystemAudio,
+        locale: "en",
+      });
+
+      expect(invokeMock).toHaveBeenCalledWith("start_mic_recording", {
+        meetingId: "mtg-1",
+        options: { inputDeviceId, includeSystemAudio },
+      });
+      expect(result).toEqual({ success: true, data: started });
+    }
+  );
+
+  it("returns a system audio start error without failing the start", async () => {
     const started = {
       meetingId: "mtg-1",
       wavPath: RECORDING_FILE.wavPath,
       startedAtMs: 1700000000000,
+      hasSystemAudio: false,
+      systemAudioError: "system_audio_failed",
     };
     invokeMock.mockResolvedValue(started);
 
     const result = await startMicRecording({
       meetingId: "mtg-1",
-      inputDeviceId,
+      inputDeviceId: null,
+      includeSystemAudio: true,
       locale: "en",
     });
 
-    expect(invokeMock).toHaveBeenCalledWith("start_mic_recording", {
-      meetingId: "mtg-1",
-      options: { inputDeviceId },
-    });
     expect(result).toEqual({ success: true, data: started });
   });
 
@@ -63,8 +89,10 @@ describe("Recording command wrappers", () => {
       meetingId: "mtg-1",
       wavPath: RECORDING_FILE.wavPath,
       startedAtMs: 1700000000000,
+      hasSystemAudio: true,
       elapsedSec: 12.5,
       level: 0.3,
+      systemLevel: 0.2,
     };
     invokeMock.mockResolvedValueOnce({ active });
     invokeMock.mockResolvedValueOnce({ active: null });
@@ -107,6 +135,41 @@ describe("Recording command wrappers", () => {
     expect(result).toEqual({ success: true, data: "UklGRg==" });
   });
 
+  it.each(["mic", "system"] as const)(
+    "reads the %s track when one is requested",
+    async (track) => {
+      invokeMock.mockResolvedValue("UklGRg==");
+
+      await readRecordingSlice({
+        meetingId: "mtg-1",
+        startSec: 0,
+        maxSec: 180,
+        track,
+        locale: "vi",
+      });
+
+      expect(invokeMock).toHaveBeenCalledWith("read_recording_slice", {
+        meetingId: "mtg-1",
+        startSec: 0,
+        maxSec: 180,
+        track,
+      });
+    }
+  );
+
+  it("does not send a track key when none is requested", async () => {
+    invokeMock.mockResolvedValue("UklGRg==");
+
+    await readRecordingSlice({
+      meetingId: "mtg-1",
+      startSec: 0,
+      maxSec: 180,
+      locale: "vi",
+    });
+
+    expect(invokeMock.mock.calls[0][1]).not.toHaveProperty("track");
+  });
+
   it("lists recordings with the recordings directory", async () => {
     const listing = { recordingsDir: "/data/recordings", files: [RECORDING_FILE] };
     invokeMock.mockResolvedValue(listing);
@@ -142,11 +205,13 @@ describe("Recording command wrappers", () => {
     const vietnamese = await startMicRecording({
       meetingId: "mtg-1",
       inputDeviceId: null,
+      includeSystemAudio: false,
       locale: "vi",
     });
     const english = await startMicRecording({
       meetingId: "mtg-1",
       inputDeviceId: null,
+      includeSystemAudio: false,
       locale: "en",
     });
 

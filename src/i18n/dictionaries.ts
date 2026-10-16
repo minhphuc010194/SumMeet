@@ -29,7 +29,10 @@ export interface Dictionary {
     startRecording: string;
     stopRecording: string;
     includeSystemAudio: string;
-    systemAudioComingSoon: string;
+    systemAudioUnsupported: string;
+    systemAudioPermissionHint: string;
+    systemAudioUnavailable: string;
+    systemAudioSilentHint: string;
     deviceSwitched: string;
     sessionTitle: string;
     uploadedFileSource: string;
@@ -47,6 +50,7 @@ export interface Dictionary {
     callDetectedAction: string;
     callDetectedStart: string;
     callDetectedDismiss: string;
+    systemSignal: string;
   };
   recordingResult: {
     title: string;
@@ -275,13 +279,16 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       controlsLabel: "Điều khiển ghi âm cuộc họp",
       readyTitle: "Ghi âm & Tóm tắt tự động (Microphone)",
       recordingTitle: "Đang thu âm từ Microphone...",
-      captureHint: "• Thu từ micro đã chọn (chỉ âm thanh, không quay màn hình)",
+      captureHint: "• Thu từ micro đã chọn. Khi bật âm thanh hệ thống, mọi âm thanh máy phát ra cũng được ghi và gửi tới OpenRouter để gỡ băng (không quay màn hình)",
       inputDeviceLabel: "Micro dùng để ghi âm",
       systemDefaultDevice: "Mặc định hệ thống ({device})",
       startRecording: "Bắt đầu ghi âm",
       stopRecording: "Dừng & Tóm tắt",
       includeSystemAudio: "Thu cả âm thanh hệ thống (Zoom/Meet/Teams)",
-      systemAudioComingSoon: "Thu âm thanh hệ thống sẽ có trong phiên bản sau. Hiện tại SumMeet chỉ thu từ micro.",
+      systemAudioUnsupported: "Thu âm thanh hệ thống cần macOS 14.6 trở lên hoặc Windows 10/11.",
+      systemAudioPermissionHint: "Trên macOS, lần ghi đầu tiên sẽ hỏi quyền ghi âm thanh hệ thống. Nếu đồng hồ \"Hệ thống\" đứng yên, hãy bật SumMeet trong Cài đặt hệ thống → Quyền riêng tư & Bảo mật → Ghi màn hình & âm thanh hệ thống.",
+      systemAudioUnavailable: "Không thu được âm thanh hệ thống, SumMeet đang ghi âm chỉ từ micro.",
+      systemAudioSilentHint: "Chưa nghe thấy âm thanh hệ thống trong 1 phút. Nếu đang trong cuộc gọi, hãy kiểm tra quyền ghi âm thanh hệ thống (macOS: Cài đặt hệ thống → Quyền riêng tư & Bảo mật → Ghi màn hình & âm thanh hệ thống).",
       deviceSwitched: "🎧 Đã tự động chuyển sang thiết bị: {device}",
       sessionTitle: "Ghi âm lúc {time}",
       uploadedFileSource: "File: {name}",
@@ -299,6 +306,7 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       callDetectedAction: "Ghi âm",
       callDetectedStart: "Bắt đầu ghi âm",
       callDetectedDismiss: "Bỏ qua",
+      systemSignal: "Hệ thống:",
     },
     recordingResult: {
       title: "Kết quả vừa thu: {title}",
@@ -530,13 +538,16 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       controlsLabel: "Meeting recorder controls",
       readyTitle: "One-Click Auto Recorder (Microphone)",
       recordingTitle: "Recording from the microphone...",
-      captureHint: "• Captures the selected microphone (audio only, no screen video)",
+      captureHint: "• Records the selected microphone. With system audio on, everything your computer plays is also recorded and sent to OpenRouter for transcription (no screen video)",
       inputDeviceLabel: "Recording microphone",
       systemDefaultDevice: "System default ({device})",
       startRecording: "Start Recording",
       stopRecording: "Stop & Summarize",
       includeSystemAudio: "Capture system audio (Zoom/Meet/Teams)",
-      systemAudioComingSoon: "System audio capture is coming in a later version. For now SumMeet records from the microphone only.",
+      systemAudioUnsupported: "System audio needs macOS 14.6 or later, or Windows 10/11.",
+      systemAudioPermissionHint: "On macOS, the first recording asks for permission to record system audio. If the \"System\" meter stays flat, turn on SumMeet in System Settings → Privacy & Security → Screen & System Audio Recording.",
+      systemAudioUnavailable: "System audio couldn't start, so SumMeet is recording the microphone only.",
+      systemAudioSilentHint: "No system audio for a minute. If you're in a call, check the system audio permission (macOS: System Settings → Privacy & Security → Screen & System Audio Recording).",
       deviceSwitched: "🎧 Switched audio device to: {device}",
       sessionTitle: "Recording at {time}",
       uploadedFileSource: "File: {name}",
@@ -554,6 +565,7 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       callDetectedAction: "Record",
       callDetectedStart: "Start recording",
       callDetectedDismiss: "Dismiss",
+      systemSignal: "System:",
     },
     recordingResult: {
       title: "Latest Recording Result: {title}",

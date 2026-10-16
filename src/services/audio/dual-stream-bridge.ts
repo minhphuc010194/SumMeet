@@ -6,6 +6,7 @@ export const TARGET_STT_SAMPLE_RATE = 16000;
 interface AudioDevicesInventory {
   devices?: Array<Record<string, unknown>>;
   routing?: Record<string, unknown>;
+  system_audio_supported?: boolean;
 }
 
 const HEADPHONE_KEYWORDS = [
@@ -126,6 +127,7 @@ export async function enumerateDualStreamDevices(): Promise<{
   isHeadphoneOrAirPodsActive: boolean;
   inputSampleRate: number;
   systemSampleRate: number;
+  systemAudioSupported: boolean;
 }> {
   try {
     const parsed = await invoke<AudioDevicesInventory>("list_audio_devices");
@@ -158,6 +160,7 @@ export async function enumerateDualStreamDevices(): Promise<{
         isHeadphoneOrAirPodsActive,
         inputSampleRate: Number(parsed.routing?.input_sample_rate ?? 48000),
         systemSampleRate: Number(parsed.routing?.system_sample_rate ?? 48000),
+        systemAudioSupported: Boolean(parsed.system_audio_supported),
       };
     }
   } catch (error) {
@@ -212,6 +215,7 @@ export async function enumerateDualStreamDevices(): Promise<{
         isHeadphoneOrAirPodsActive,
         inputSampleRate: isHeadphoneOrAirPodsActive ? 24000 : 48000,
         systemSampleRate: 48000,
+        systemAudioSupported: false,
       };
     } catch (error) {
       console.error("[DualStreamBridge] MediaDevices enumeration failed:", {
@@ -244,6 +248,7 @@ export async function enumerateDualStreamDevices(): Promise<{
     isHeadphoneOrAirPodsActive: true,
     inputSampleRate: 24000,
     systemSampleRate: 48000,
+    systemAudioSupported: false,
   };
 }
 

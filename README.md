@@ -18,6 +18,15 @@ On first run, SumMeet asks for an [OpenRouter](https://openrouter.ai/keys) API k
 
 On macOS, the red close button only hides the window: SumMeet keeps running (an active recording continues) and you quit with **Cmd+Q**.
 
+## Recording
+
+Pick the microphone in the recorder bar; SumMeet remembers the choice and falls back to the system default when that device is unplugged.
+
+Turn on **Capture system audio** to also record what your computer plays, such as the other people in a Zoom, Meet or Teams call. Everything the computer plays during the recording is captured and sent to OpenRouter for transcription, and the transcript labels your microphone as *You* and the rest as *Speaker n*. System audio needs macOS 14.6 or later, or Windows 10/11.
+
+- macOS asks for permission the first time you record with system audio. If the **System** meter stays flat, turn on SumMeet in **System Settings → Privacy & Security → Screen & System Audio Recording**. Because builds are ad-hoc signed, an update can turn this permission off again while it still looks enabled; switch it off and on if the meter stays flat after an update.
+- Windows needs no extra permission. System audio follows the output device that was active when the recording started.
+
 ## Auto-update
 
 SumMeet checks for a new version on launch and every 6 hours. When one is available, a dialog shows the new version. Choose **Update now** to download, install, and restart automatically, or **Later** to be asked again on the next launch or when a newer version appears. Update packages are verified with a signature before they are installed. After you choose **Later**, a round download button stays at the bottom of the sidebar so you can reopen the update. AI settings shows the current version with a **Check for updates** button, and on macOS **SumMeet → Check for Updates…** runs the same check; both show the result in a small panel.
