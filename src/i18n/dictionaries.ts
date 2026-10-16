@@ -227,6 +227,16 @@ export interface Dictionary {
     later: string;
     downloading: string;
     installFailed: string;
+    buttonLabel: string;
+    settingsTitle: string;
+    currentVersion: string;
+    checkButton: string;
+    versionLabel: string;
+    checkingStatus: string;
+    upToDate: string;
+    checkFailed: string;
+    tryAgain: string;
+    menuCheckForUpdates: string;
   };
 }
 
@@ -463,6 +473,16 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       later: "Để sau",
       downloading: "Đang tải bản cập nhật",
       installFailed: "Không thể cài đặt bản cập nhật. Vui lòng thử lại sau.",
+      buttonLabel: "Có bản {version} — bấm để cập nhật",
+      settingsTitle: "Cập nhật ứng dụng",
+      currentVersion: "Phiên bản hiện tại: {version}",
+      checkButton: "Kiểm tra cập nhật",
+      versionLabel: "Phiên bản {version}",
+      checkingStatus: "Đang kiểm tra cập nhật…",
+      upToDate: "Bạn đang dùng phiên bản mới nhất.",
+      checkFailed: "Không thể kiểm tra cập nhật. Vui lòng thử lại sau.",
+      tryAgain: "Thử lại",
+      menuCheckForUpdates: "Kiểm tra cập nhật…",
     },
   },
   en: {
@@ -697,6 +717,16 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       later: "Later",
       downloading: "Downloading update",
       installFailed: "The update could not be installed. Please try again later.",
+      buttonLabel: "Update {version} available",
+      settingsTitle: "App updates",
+      currentVersion: "Current version: {version}",
+      checkButton: "Check for updates",
+      versionLabel: "Version {version}",
+      checkingStatus: "Checking for updates…",
+      upToDate: "You're on the latest version.",
+      checkFailed: "Could not check for updates. Please try again later.",
+      tryAgain: "Try again",
+      menuCheckForUpdates: "Check for Updates…",
     },
   },
 };

@@ -14,6 +14,7 @@ export function UpdateDialog({ locale }: UpdateDialogProps) {
   const dict = getDictionary(locale).update;
   const {
     update,
+    isDialogOpen,
     status,
     progress,
     checkForUpdate,
@@ -30,7 +31,7 @@ export function UpdateDialog({ locale }: UpdateDialogProps) {
     return () => clearInterval(timer);
   }, [checkForUpdate]);
 
-  if (!update) return null;
+  if (!update || !isDialogOpen) return null;
 
   const isInstalling = status === "installing";
 

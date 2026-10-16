@@ -50,8 +50,21 @@ fn list_audio_devices() -> Result<serde_json::Value, String> {
     }))
 }
 
+#[cfg(target_os = "macos")]
+fn show_main_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if let Err(error) = window.show() {
+        eprintln!("[Window] Show failed: {error}");
+    }
+    if let Err(error) = window.set_focus() {
+        eprintln!("[Window] Focus failed: {error}");
+    }
+}
+
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(mic::MicRecorder::default())
@@ -73,7 +86,41 @@ pub fn run() {
             recordings::list_recordings,
             recordings::delete_recording,
             recordings::delete_all_recordings,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running SumMeet");
+        ]);
+
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                if let Err(error) = window.hide() {
+                    eprintln!("[Window] Hide failed: {error}");
+                }
+            }
+        })
+        .on_menu_event(|app, event| {
+            if event.id() == "check-for-updates" {
+                show_main_window(app);
+            }
+        });
+
+    let app = builder
+        .build(tauri::generate_context!())
+        .expect("error while building SumMeet");
+
+    #[cfg(target_os = "macos")]
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Reopen {
+            has_visible_windows: false,
+            ..
+        } = event
+        {
+            show_main_window(app_handle);
+        }
+    });
+    #[cfg(not(target_os = "macos"))]
+    app.run(|_, _| {});
 }
