@@ -27,6 +27,7 @@ const INITIAL_CALENDAR_EVENTS: CalendarMeetingEvent[] = [];
 const DEFAULT_SETTINGS: AIProviderSettings = {
   openRouterModel: DEFAULT_OPENROUTER_MODEL,
   transcriptionLanguage: "vi",
+  callDetectionEnabled: true,
 };
 
 export type OpenRouterKeyStatus = "loading" | "missing" | "ready";
@@ -336,13 +337,15 @@ export const useMeetingStore = create<MeetingStoreState>()(
     }),
     {
       name: "summarize-bot-clean-v4",
-      version: 1,
-      migrate: (persisted) => {
+      version: 2,
+      migrate: (persisted, version) => {
         const previous = persisted as PersistedMeetingState;
+        const keepsSavedSettings = version >= 1;
         return {
           ...previous,
           settings: {
             ...DEFAULT_SETTINGS,
+            ...(keepsSavedSettings ? previous.settings : {}),
             transcriptionLanguage:
               previous.settings?.transcriptionLanguage ??
               DEFAULT_SETTINGS.transcriptionLanguage,

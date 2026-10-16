@@ -23,5 +23,9 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 cpal = "0.18"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.11", features = ["v4", "serde"] }
+tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = { version = "2", default-features = false, features = ["rustls-tls", "system-proxy"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-audio = { version = "0.3", default-features = false, features = ["AudioHardware"] }

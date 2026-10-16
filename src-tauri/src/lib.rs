@@ -2,6 +2,7 @@ pub mod audio;
 mod credentials;
 pub mod db;
 mod mic;
+mod mic_activity;
 mod recordings;
 
 use tauri::Manager;
@@ -66,12 +67,14 @@ fn show_main_window(app: &tauri::AppHandle) {
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
         .manage(mic::MicRecorder::default())
         .setup(|app| {
             let recordings_dir = app.path().app_data_dir()?.join("recordings");
             std::fs::create_dir_all(&recordings_dir)?;
             app.manage(recordings::RecordingsDir(recordings_dir));
+            mic_activity::spawn_watcher(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

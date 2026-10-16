@@ -166,3 +166,63 @@ describe("Preferred input device", () => {
     expect(useMeetingStore.getState().preferredInputDeviceId).toBeNull();
   });
 });
+
+describe("Call detection setting", () => {
+  const SAVED_SETTINGS = {
+    openRouterModel: "custom/model",
+    transcriptionLanguage: "en",
+  };
+
+  function rehydrateFrom(version: number, settings: object) {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version,
+        state: {
+          meetings: [],
+          selectedMeetingId: "",
+          calendarEvents: [],
+          settings,
+        },
+      })
+    );
+    return useMeetingStore.persist.rehydrate();
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    useMeetingStore.getState().updateSettings({ callDetectionEnabled: true });
+  });
+
+  it("turns on for saved settings that predate it without losing the saved ones", async () => {
+    await rehydrateFrom(1, SAVED_SETTINGS);
+
+    expect(useMeetingStore.getState().settings).toMatchObject({
+      ...SAVED_SETTINGS,
+      callDetectionEnabled: true,
+    });
+  });
+
+  it("is persisted and restored when switched off", async () => {
+    useMeetingStore.getState().updateSettings({ callDetectionEnabled: false });
+    const persisted = localStorage.getItem(STORAGE_KEY) ?? "";
+    expect(JSON.parse(persisted).state.settings.callDetectionEnabled).toBe(
+      false
+    );
+
+    useMeetingStore.getState().updateSettings({ callDetectionEnabled: true });
+    localStorage.setItem(STORAGE_KEY, persisted);
+    await useMeetingStore.persist.rehydrate();
+
+    expect(useMeetingStore.getState().settings.callDetectionEnabled).toBe(
+      false
+    );
+  });
+
+  it("never persists the OpenRouter key", () => {
+    useMeetingStore.setState({ openRouterKey: "sk-or-v1-secret-value" });
+    useMeetingStore.getState().updateSettings({ callDetectionEnabled: true });
+
+    expect(localStorage.getItem(STORAGE_KEY)).not.toContain("sk-or-v1-secret");
+  });
+});

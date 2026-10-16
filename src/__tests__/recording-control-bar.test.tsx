@@ -1,15 +1,29 @@
 import {
+  act,
+  cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
   within,
 } from "@testing-library/react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, type PluginListener } from "@tauri-apps/api/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  isPermissionGranted,
+  onAction,
+  registerActionTypes,
+  requestPermission,
+  sendNotification,
+} from "@tauri-apps/plugin-notification";
 import { RecordingControlBar } from "@/components/recorder/RecordingControlBar";
 import { getDictionary } from "@/i18n/dictionaries";
 import { generateSummaryWithFallback } from "@/services/ai/provider-registry";
+import {
+  requestCallAttention,
+  subscribeCallActions,
+  subscribeMicActivity,
+} from "@/services/audio/mic-activity";
 import {
   getActiveRecording,
   startMicRecording,
@@ -23,10 +37,32 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
   convertFileSrc: (path: string) => `asset://${path}`,
 }));
+const mainWindow = vi.hoisted(() => ({
+  requestUserAttention: vi.fn(),
+  show: vi.fn(),
+  unminimize: vi.fn(),
+  setFocus: vi.fn(),
+}));
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => mainWindow,
+  UserAttentionType: { Critical: 1, Informational: 2 },
+}));
+vi.mock("@tauri-apps/plugin-notification", () => ({
+  isPermissionGranted: vi.fn(),
+  onAction: vi.fn(),
+  registerActionTypes: vi.fn(),
+  requestPermission: vi.fn(),
+  sendNotification: vi.fn(),
+}));
 vi.mock("@/services/audio/recording-commands", () => ({
   getActiveRecording: vi.fn(),
   startMicRecording: vi.fn(),
   stopMicRecording: vi.fn(),
+}));
+vi.mock("@/services/audio/mic-activity", () => ({
+  subscribeMicActivity: vi.fn(async () => () => {}),
+  subscribeCallActions: vi.fn(async () => () => {}),
+  requestCallAttention: vi.fn(),
 }));
 vi.mock("@/services/audio/recording-transcription", () => ({
   transcribeRecordingSlice: vi.fn(),
@@ -43,10 +79,19 @@ const startMock = vi.mocked(startMicRecording);
 const stopMock = vi.mocked(stopMicRecording);
 const tailMock = vi.mocked(transcribeRecordingTail);
 const summaryMock = vi.mocked(generateSummaryWithFallback);
+const subscribeMock = vi.mocked(subscribeMicActivity);
+const subscribeActionsMock = vi.mocked(subscribeCallActions);
+const onActionMock = vi.mocked(onAction);
+const registerMock = vi.mocked(registerActionTypes);
+const attentionMock = vi.mocked(requestCallAttention);
+const grantedMock = vi.mocked(isPermissionGranted);
+const requestPermissionMock = vi.mocked(requestPermission);
+const sendMock = vi.mocked(sendNotification);
 
 type ActiveRecordingResult = Awaited<ReturnType<typeof getActiveRecording>>;
 
 const dict = getDictionary("vi");
+const dictEn = getDictionary("en");
 const WAV_PATH = "/recordings/mtg.wav";
 const PERSISTED_OFFSET_SEC = 95;
 const STORAGE_KEY = "summarize-bot-clean-v4";
@@ -99,7 +144,7 @@ function summaryFor(meetingId: string): MeetingSummary {
   };
 }
 
-async function recoverAndStopRecording() {
+async function recoverAndStopRecording(whileRecording?: () => void) {
   const meeting = useMeetingStore.getState().createMeetingSession({
     title: "Daily",
     audioDeviceUsed: "Mic",
@@ -134,9 +179,11 @@ async function recoverAndStopRecording() {
   render(
     <RecordingControlBar dict={dict} locale="vi" onToast={onToast} />
   );
-  fireEvent.click(
-    await screen.findByRole("button", { name: dict.recorder.stopRecording })
-  );
+  const stopButton = await screen.findByRole("button", {
+    name: dict.recorder.stopRecording,
+  });
+  whileRecording?.();
+  fireEvent.click(stopButton);
   await waitFor(() =>
     expect(
       useMeetingStore.getState().meetings.find((m) => m.id === meeting.id)
@@ -295,6 +342,421 @@ describe("Recording control bar after a reload", () => {
     expect(useMeetingStore.getState().recordingTranscribedSec).toBe(
       PERSISTED_OFFSET_SEC
     );
+  });
+});
+
+describe("Call detection suggestion", () => {
+  let emitMicActivity: (otherAppActive: boolean) => void = () => {};
+  let recordFromNotification: () => void = () => {};
+  const unsubscribeMock = vi.fn();
+  const unsubscribeActionsMock = vi.fn();
+
+  function emit(otherAppActive: boolean) {
+    act(() => emitMicActivity(otherAppActive));
+  }
+
+  function recordFromActionButton() {
+    act(() => recordFromNotification());
+  }
+
+  async function useRealCallActions() {
+    const actual = await vi.importActual<
+      typeof import("@/services/audio/mic-activity")
+    >("@/services/audio/mic-activity");
+    subscribeActionsMock.mockImplementationOnce(actual.subscribeCallActions);
+  }
+
+  function captureNotificationAction() {
+    let handler: (event: { actionId: string }) => Promise<void> = async () => {};
+    onActionMock.mockImplementationOnce(async (callback) => {
+      handler = callback as typeof handler;
+      return {
+        unregister: vi.fn().mockResolvedValue(undefined),
+      } as unknown as PluginListener;
+    });
+    return (actionId: string) =>
+      act(async () => {
+        await handler({ actionId });
+      });
+  }
+
+  async function useRealCallAttention() {
+    const actual = await vi.importActual<
+      typeof import("@/services/audio/mic-activity")
+    >("@/services/audio/mic-activity");
+    attentionMock.mockImplementationOnce(actual.requestCallAttention);
+  }
+
+  async function renderBar() {
+    render(<RecordingControlBar dict={dict} locale="vi" onToast={vi.fn()} />);
+    await waitFor(() => expect(subscribeMock).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: dict.recorder.startRecording,
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false)
+    );
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    activeMock.mockResolvedValue({ success: true, data: null });
+    subscribeMock.mockImplementation(async (onChange) => {
+      emitMicActivity = onChange;
+      return unsubscribeMock;
+    });
+    subscribeActionsMock.mockImplementation(async ({ onRecord }) => {
+      recordFromNotification = onRecord;
+      return unsubscribeActionsMock;
+    });
+    useMeetingStore.setState({
+      meetings: [],
+      selectedMeetingId: "",
+      settings: {
+        ...useMeetingStore.getState().settings,
+        callDetectionEnabled: true,
+      },
+    });
+  });
+
+  it("suggests recording once when another app starts using the microphone", async () => {
+    await renderBar();
+    expect(screen.queryByRole("status")).toBeNull();
+
+    emit(true);
+    emit(true);
+
+    expect(screen.getByText(dict.recorder.callDetectedTitle)).toBeTruthy();
+    expect(attentionMock).toHaveBeenCalledTimes(1);
+    expect(attentionMock).toHaveBeenCalledWith({
+      title: dict.recorder.callDetectedTitle,
+      body: dict.recorder.callDetectedBody,
+    });
+  });
+
+  it("sends one localized OS notification on the rising edge", async () => {
+    grantedMock.mockResolvedValue(true);
+    await useRealCallAttention();
+    await renderBar();
+
+    emit(true);
+    emit(true);
+
+    await waitFor(() => expect(sendMock).toHaveBeenCalledTimes(1));
+    expect(sendMock).toHaveBeenCalledWith({
+      title: dict.recorder.callDetectedTitle,
+      body: dict.recorder.callDetectedBody,
+      actionTypeId: "call-detected",
+    });
+  });
+
+  it("still shows the suggestion and logs when the notification permission is denied", async () => {
+    grantedMock.mockResolvedValue(false);
+    requestPermissionMock.mockResolvedValue("denied");
+    await useRealCallAttention();
+    await renderBar();
+
+    emit(true);
+
+    await waitFor(() =>
+      expect(console.error).toHaveBeenCalledWith(
+        "[MicActivity] Operation failed:",
+        {
+          context: "sendNotification",
+          error: "notification_permission_denied",
+        }
+      )
+    );
+    expect(sendMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toBeTruthy();
+  });
+
+  it("hides the suggestion when the other app releases the microphone", async () => {
+    await renderBar();
+    emit(true);
+
+    emit(false);
+
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("keeps a dismissed suggestion hidden until the next inactive to active change", async () => {
+    await renderBar();
+    emit(true);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dict.recorder.callDetectedDismiss })
+    );
+    emit(true);
+
+    expect(screen.queryByRole("status")).toBeNull();
+
+    emit(false);
+    emit(true);
+
+    expect(screen.getByRole("status")).toBeTruthy();
+    expect(attentionMock).toHaveBeenCalledTimes(2);
+    expect(attentionMock).toHaveBeenLastCalledWith({
+      title: dict.recorder.callDetectedTitle,
+      body: dict.recorder.callDetectedBody,
+    });
+  });
+
+  it("starts recording from the suggestion and hides it", async () => {
+    startMock.mockResolvedValue({
+      success: true,
+      data: { meetingId: "mtg-call", wavPath: WAV_PATH, startedAtMs: 0 },
+    });
+    await renderBar();
+    emit(true);
+
+    fireEvent.click(
+      within(screen.getByRole("status")).getByRole("button", {
+        name: dict.recorder.callDetectedStart,
+      })
+    );
+
+    expect(screen.queryByRole("status")).toBeNull();
+    await waitFor(() => expect(startMock).toHaveBeenCalledTimes(1));
+    expect(startMock.mock.calls[0][0]).toMatchObject({ locale: "vi" });
+    await screen.findByRole("button", { name: dict.recorder.stopRecording });
+  });
+
+  it("stays silent when call detection is turned off", async () => {
+    useMeetingStore.setState({
+      settings: {
+        ...useMeetingStore.getState().settings,
+        callDetectionEnabled: false,
+      },
+    });
+    await renderBar();
+
+    emit(true);
+
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(attentionMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores microphone activity while its own recording is running", async () => {
+    tailMock.mockResolvedValue({ success: true });
+
+    await recoverAndStopRecording(() => emit(true));
+
+    expect(attentionMock).not.toHaveBeenCalled();
+  });
+
+  it("does not suggest again when a recording ends while the other app is still active", async () => {
+    tailMock.mockResolvedValue({ success: true });
+    await recoverAndStopRecording(() => emit(true));
+    const startButton = (await screen.findByRole("button", {
+      name: dict.recorder.startRecording,
+    })) as HTMLButtonElement;
+    await waitFor(() => expect(startButton.disabled).toBe(false));
+
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(attentionMock).not.toHaveBeenCalled();
+  });
+
+  it("unsubscribes when the control bar unmounts", async () => {
+    await renderBar();
+
+    cleanup();
+
+    expect(unsubscribeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts recording from the notification Record button and hides the suggestion", async () => {
+    startMock.mockResolvedValue({
+      success: true,
+      data: { meetingId: "mtg-call", wavPath: WAV_PATH, startedAtMs: 0 },
+    });
+    await renderBar();
+    emit(true);
+
+    recordFromActionButton();
+
+    await screen.findByRole("button", { name: dict.recorder.stopRecording });
+    expect(startMock).toHaveBeenCalledTimes(1);
+    expect(startMock.mock.calls[0][0]).toMatchObject({ locale: "vi" });
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("does not start a second recording from the notification while recording", async () => {
+    startMock.mockResolvedValue({
+      success: true,
+      data: { meetingId: "mtg-call", wavPath: WAV_PATH, startedAtMs: 0 },
+    });
+    await renderBar();
+    emit(true);
+    recordFromActionButton();
+    await screen.findByRole("button", { name: dict.recorder.stopRecording });
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+
+    recordFromActionButton();
+
+    expect(startMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start a recording from the notification while a result is processing", async () => {
+    startMock.mockResolvedValue({
+      success: true,
+      data: { meetingId: "mtg-call", wavPath: WAV_PATH, startedAtMs: 0 },
+    });
+    stopMock.mockReturnValue(new Promise(() => {}));
+    await renderBar();
+    emit(true);
+    recordFromActionButton();
+    fireEvent.click(
+      await screen.findByRole("button", { name: dict.recorder.stopRecording })
+    );
+    await screen.findByText(dict.recorder.processingRecording);
+
+    recordFromActionButton();
+
+    expect(startMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start a recording from the notification until recovery finishes", async () => {
+    startMock.mockResolvedValue({
+      success: true,
+      data: { meetingId: "mtg-call", wavPath: WAV_PATH, startedAtMs: 0 },
+    });
+    let finishRecovery: (value: ActiveRecordingResult) => void = () => {};
+    activeMock.mockReturnValue(
+      new Promise((resolve) => {
+        finishRecovery = resolve;
+      })
+    );
+    render(<RecordingControlBar dict={dict} locale="vi" onToast={vi.fn()} />);
+    await waitFor(() => expect(subscribeActionsMock).toHaveBeenCalledTimes(1));
+
+    recordFromActionButton();
+
+    expect(startMock).not.toHaveBeenCalled();
+
+    finishRecovery({ success: true, data: null });
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: dict.recorder.startRecording,
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false)
+    );
+    emit(true);
+    recordFromActionButton();
+
+    await waitFor(() => expect(startMock).toHaveBeenCalledTimes(1));
+  });
+
+  it("focuses the window on a notification tap and keeps the suggestion visible", async () => {
+    await useRealCallActions();
+    const perform = captureNotificationAction();
+    await renderBar();
+    await waitFor(() => expect(onActionMock).toHaveBeenCalledTimes(1));
+    emit(true);
+
+    await perform("tap");
+
+    expect(mainWindow.show).toHaveBeenCalledTimes(1);
+    expect(mainWindow.unminimize).toHaveBeenCalledTimes(1);
+    expect(mainWindow.setFocus).toHaveBeenCalledTimes(1);
+    expect(startMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toBeTruthy();
+  });
+
+  it("logs a focus failure on a tap and keeps the suggestion visible", async () => {
+    mainWindow.show.mockRejectedValueOnce(new Error("window gone"));
+    await useRealCallActions();
+    const perform = captureNotificationAction();
+    await renderBar();
+    await waitFor(() => expect(onActionMock).toHaveBeenCalledTimes(1));
+    emit(true);
+
+    await perform("tap");
+
+    expect(console.error).toHaveBeenCalledWith(
+      "[MicActivity] Operation failed:",
+      { context: "focusWindow", error: "window gone" }
+    );
+    expect(screen.getByRole("status")).toBeTruthy();
+  });
+
+  it("logs registration and listener failures and still shows the suggestion and notification", async () => {
+    registerMock.mockRejectedValueOnce(new Error("not allowed"));
+    onActionMock.mockRejectedValueOnce(new Error("no ipc"));
+    await useRealCallActions();
+    await renderBar();
+
+    emit(true);
+
+    await waitFor(() =>
+      expect(console.error).toHaveBeenCalledWith(
+        "[MicActivity] Operation failed:",
+        { context: "onAction", error: "no ipc" }
+      )
+    );
+    expect(console.error).toHaveBeenCalledWith(
+      "[MicActivity] Operation failed:",
+      { context: "registerActionTypes", error: "not allowed" }
+    );
+    expect(screen.getByRole("status")).toBeTruthy();
+    expect(attentionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("attaches the call actions once per mount and re-registers them when the locale changes", async () => {
+    const onToast = vi.fn();
+    const view = render(
+      <RecordingControlBar dict={dict} locale="vi" onToast={onToast} />
+    );
+    await waitFor(() => expect(subscribeActionsMock).toHaveBeenCalledTimes(1));
+
+    view.rerender(
+      <RecordingControlBar dict={dict} locale="vi" onToast={onToast} />
+    );
+
+    expect(subscribeActionsMock).toHaveBeenCalledTimes(1);
+    expect(unsubscribeActionsMock).not.toHaveBeenCalled();
+    expect(subscribeActionsMock.mock.calls[0][0].recordTitle).toBe("Ghi âm");
+
+    view.rerender(
+      <RecordingControlBar dict={dictEn} locale="en" onToast={onToast} />
+    );
+
+    await waitFor(() => expect(subscribeActionsMock).toHaveBeenCalledTimes(2));
+    expect(unsubscribeActionsMock).toHaveBeenCalledTimes(1);
+    expect(subscribeActionsMock.mock.calls[1][0].recordTitle).toBe("Record");
+  });
+
+  it("removes the call actions listener when the control bar unmounts", async () => {
+    await renderBar();
+    expect(unsubscribeActionsMock).not.toHaveBeenCalled();
+
+    cleanup();
+
+    expect(unsubscribeActionsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes a call actions listener that registers after the control bar unmounted", async () => {
+    let finishSubscribing: (stop: () => void) => void = () => {};
+    subscribeActionsMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishSubscribing = resolve;
+      })
+    );
+    render(<RecordingControlBar dict={dict} locale="vi" onToast={vi.fn()} />);
+    await waitFor(() => expect(subscribeActionsMock).toHaveBeenCalledTimes(1));
+
+    cleanup();
+    finishSubscribing(unsubscribeActionsMock);
+
+    await waitFor(() => expect(unsubscribeActionsMock).toHaveBeenCalledTimes(1));
   });
 });
 

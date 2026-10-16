@@ -41,6 +41,12 @@ export interface Dictionary {
     liveTranscribing: string;
     listening: string;
     audioSignal: string;
+    callDetectedTitle: string;
+    callDetectedHint: string;
+    callDetectedBody: string;
+    callDetectedAction: string;
+    callDetectedStart: string;
+    callDetectedDismiss: string;
   };
   recordingResult: {
     title: string;
@@ -191,6 +197,8 @@ export interface Dictionary {
     keyChangeButton: string;
     keyRemoveButton: string;
     keySavedToast: string;
+    callDetectionLabel: string;
+    callDetectionHint: string;
     saveButton: string;
     savedToast: string;
     closeButton: string;
@@ -285,6 +293,12 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       liveTranscribing: "Đang tự động gỡ băng âm thanh vừa thu...",
       listening: "Đang lắng nghe Microphone (Đã gỡ băng {count} đoạn)",
       audioSignal: "Tín hiệu âm thanh:",
+      callDetectedTitle: "Có vẻ bạn đang trong một cuộc gọi",
+      callDetectedHint: "Một ứng dụng khác đang dùng micro. Ghi âm cuộc họp này?",
+      callDetectedBody: "Một ứng dụng khác đang dùng micro. Mở SumMeet để ghi âm cuộc họp này.",
+      callDetectedAction: "Ghi âm",
+      callDetectedStart: "Bắt đầu ghi âm",
+      callDetectedDismiss: "Bỏ qua",
     },
     recordingResult: {
       title: "Kết quả vừa thu: {title}",
@@ -440,6 +454,8 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       keyChangeButton: "Xác thực & Thay khóa",
       keyRemoveButton: "Xóa khóa khỏi máy này",
       keySavedToast: "Đã xác thực và lưu khóa OpenRouter mới!",
+      callDetectionLabel: "Gợi ý ghi âm khi phát hiện cuộc gọi",
+      callDetectionHint: "SumMeet chỉ kiểm tra xem ứng dụng khác có đang dùng micro hay không, không đọc âm thanh.",
       saveButton: "Lưu cấu hình",
       savedToast: "Đã lưu cấu hình AI & Audio thành công!",
       closeButton: "Đóng",
@@ -532,6 +548,12 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       liveTranscribing: "Auto-transcribing latest audio...",
       listening: "Listening to the microphone ({count} segments captured)",
       audioSignal: "Audio Signal:",
+      callDetectedTitle: "Looks like you're in a call",
+      callDetectedHint: "Another app is using your microphone. Record this meeting?",
+      callDetectedBody: "Another app is using your microphone. Open SumMeet to record this meeting.",
+      callDetectedAction: "Record",
+      callDetectedStart: "Start recording",
+      callDetectedDismiss: "Dismiss",
     },
     recordingResult: {
       title: "Latest Recording Result: {title}",
@@ -687,6 +709,8 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       keyChangeButton: "Validate & Replace Key",
       keyRemoveButton: "Remove key from this device",
       keySavedToast: "New OpenRouter key validated and saved!",
+      callDetectionLabel: "Suggest recording when a call is detected",
+      callDetectionHint: "SumMeet only checks whether another app is using the microphone. It never reads the audio.",
       saveButton: "Save Configuration",
       savedToast: "AI & Audio configuration saved!",
       closeButton: "Close",
