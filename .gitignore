@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+src-tauri/target/
+.env.local
+.DS_Store
+# agent-kit
+/.agents
+/.claude
+/.codex
+/.cursor
+/AGENTS.md
+/CLAUDE.md
+/.agent-kit
+/.agent-kit-version
+recordings/
