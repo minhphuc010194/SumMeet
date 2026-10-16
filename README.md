@@ -10,7 +10,7 @@ Get the latest installer from the [releases page](https://github.com/minhphuc010
 - macOS Intel: `*_x64.dmg`
 - Windows: `*_x64-setup.exe`
 
-macOS builds are signed and notarized.
+macOS builds are ad-hoc signed but not notarized, so macOS blocks the first launch. Open SumMeet once, then go to **System Settings → Privacy & Security** and choose **Open Anyway** for SumMeet. macOS may ask for microphone access again after an update.
 
 The Windows installer is not Authenticode-signed, so SmartScreen may warn on first launch. Choose **More info**, then **Run anyway**.
 
@@ -41,9 +41,5 @@ pnpm test
 
 - `TAURI_SIGNING_PRIVATE_KEY`: private key that signs update packages.
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: password of the update signing key.
-- `APPLE_CERTIFICATE`: base64-encoded Developer ID Application certificate (.p12).
-- `APPLE_CERTIFICATE_PASSWORD`: password of the .p12 certificate.
-- `APPLE_SIGNING_IDENTITY`: signing identity name of the certificate.
-- `APPLE_ID`: Apple ID used for notarization.
-- `APPLE_PASSWORD`: app-specific password for that Apple ID.
-- `APPLE_TEAM_ID`: Apple Developer team ID.
+
+Apple signing and notarization are not set up yet. To enable them, remove `signingIdentity` from `bundle.macOS` in `src-tauri/tauri.conf.json`, set `hardenedRuntime` to `true` with an entitlements file that grants `com.apple.security.device.audio-input`, add the `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` secrets, and pass them to the `tauri-action` step in `.github/workflows/release.yml`.
