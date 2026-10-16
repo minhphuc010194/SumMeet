@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { Save, Trash2 } from "lucide-react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import { OpenRouterKeyForm } from "@/components/onboarding/OpenRouterKeyForm";
+import { UpdateSettingsSection } from "@/components/update/UpdateEntryPoints";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { DEFAULT_OPENROUTER_MODEL } from "@/services/ai/provider-registry";
 import type { AIProviderSettings } from "@/types/meeting";
@@ -87,6 +88,8 @@ export function AIProviderSettingsModal({
             {dict.settings.keyRemoveButton}
           </button>
         </section>
+
+        <UpdateSettingsSection locale={dict.locale} />
 
         <form onSubmit={handleSave} className="space-y-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

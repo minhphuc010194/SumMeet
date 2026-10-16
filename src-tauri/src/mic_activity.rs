@@ -13,12 +13,12 @@ struct MicActivity {
 
 #[cfg(target_os = "macos")]
 fn read_property<T: Copy + Default>(object: u32, selector: u32) -> Result<Vec<T>, i32> {
-    use coreaudio_sys::{
+    use objc2_core_audio::{
         kAudioObjectPropertyElementMain, kAudioObjectPropertyScopeGlobal,
         AudioObjectGetPropertyData, AudioObjectGetPropertyDataSize, AudioObjectPropertyAddress,
     };
     use std::mem::size_of;
-    use std::ptr::null;
+    use std::ptr::{null, NonNull};
 
     let address = AudioObjectPropertyAddress {
         mSelector: selector,
@@ -26,7 +26,15 @@ fn read_property<T: Copy + Default>(object: u32, selector: u32) -> Result<Vec<T>
         mElement: kAudioObjectPropertyElementMain,
     };
     let mut size = 0u32;
-    let status = unsafe { AudioObjectGetPropertyDataSize(object, &address, 0, null(), &mut size) };
+    let status = unsafe {
+        AudioObjectGetPropertyDataSize(
+            object,
+            NonNull::from(&address),
+            0,
+            null(),
+            NonNull::from(&mut size),
+        )
+    };
     if status != 0 {
         return Err(status);
     }
@@ -36,11 +44,11 @@ fn read_property<T: Copy + Default>(object: u32, selector: u32) -> Result<Vec<T>
     let status = unsafe {
         AudioObjectGetPropertyData(
             object,
-            &address,
+            NonNull::from(&address),
             0,
             null(),
-            &mut size,
-            values.as_mut_ptr().cast(),
+            NonNull::from(&mut size),
+            NonNull::from(values.as_mut_slice()).cast(),
         )
     };
     if status != 0 {
@@ -52,13 +60,13 @@ fn read_property<T: Copy + Default>(object: u32, selector: u32) -> Result<Vec<T>
 
 #[cfg(target_os = "macos")]
 fn input_processes() -> Result<Vec<(i32, u32)>, i32> {
-    use coreaudio_sys::{
+    use objc2_core_audio::{
         kAudioHardwarePropertyProcessObjectList, kAudioObjectSystemObject,
         kAudioProcessPropertyIsRunningInput, kAudioProcessPropertyPID,
     };
 
     let objects = read_property::<u32>(
-        kAudioObjectSystemObject,
+        kAudioObjectSystemObject as u32,
         kAudioHardwarePropertyProcessObjectList,
     )?;
     Ok(objects

@@ -16,9 +16,11 @@ The Windows installer is not Authenticode-signed, so SmartScreen may warn on fir
 
 On first run, SumMeet asks for an [OpenRouter](https://openrouter.ai/keys) API key. It powers transcription, summaries, and chat.
 
+On macOS, the red close button only hides the window: SumMeet keeps running (an active recording continues) and you quit with **Cmd+Q**.
+
 ## Auto-update
 
-SumMeet checks for a new version on launch and every 6 hours. When one is available, a dialog shows the version and release notes. Choose **Update now** to download, install, and restart automatically, or **Later** to be asked again on the next launch or when a newer version appears. Update packages are verified with a signature before they are installed.
+SumMeet checks for a new version on launch and every 6 hours. When one is available, a dialog shows the new version. Choose **Update now** to download, install, and restart automatically, or **Later** to be asked again on the next launch or when a newer version appears. Update packages are verified with a signature before they are installed. After you choose **Later**, a round download button stays at the bottom of the sidebar so you can reopen the update. AI settings shows the current version with a **Check for updates** button, and on macOS **SumMeet → Check for Updates…** runs the same check; both show the result in a small panel.
 
 ## Development
 

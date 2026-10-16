@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import type { Dictionary } from "@/i18n/dictionaries";
 import type {
+  AudioDeviceItem,
   DualStreamStatus,
   MeetingSummary,
   SupportedLocale,
@@ -76,13 +77,17 @@ export function RecordingControlBar({
     appendTranscriptSegment,
     completeMeetingRecording,
     setRecordingTranscribedSec,
+    preferredInputDeviceId,
+    setPreferredInputDeviceId,
   } = useMeetingStore();
 
   const [status, setStatus] = useState<DualStreamStatus>(() =>
     createInitialDualStreamStatus()
   );
+  const [inputDevices, setInputDevices] = useState<AudioDeviceItem[]>([]);
   const [isProcessingResult, setIsProcessingResult] = useState(false);
   const [isRecoveryPending, setIsRecoveryPending] = useState(true);
+  const [isDeviceListPending, setIsDeviceListPending] = useState(true);
   const [isLiveTranscribingChunk, setIsLiveTranscribingChunk] = useState(false);
   const [processingStepText, setProcessingStepText] = useState("");
   const [spokenCount, setSpokenCount] = useState(0);
@@ -117,6 +122,9 @@ export function RecordingControlBar({
           previousSignature !== null && previousSignature !== nextSignature;
         lastDeviceSignatureRef.current = nextSignature;
 
+        setInputDevices(
+          result.devices.filter((device) => device.kind === "audioinput")
+        );
         setStatus((prev) => ({
           ...prev,
           activeInputDeviceName: result.activeInputName,
@@ -142,6 +150,8 @@ export function RecordingControlBar({
         console.error("[RecordingControlBar] Device check warning:", {
           error: error instanceof Error ? error.message : String(error),
         });
+      } finally {
+        setIsDeviceListPending(false);
       }
     },
     [dict, onToast]
@@ -367,6 +377,10 @@ export function RecordingControlBar({
     onToast(params.doneMessage);
   };
 
+  const preferredInput = inputDevices.find(
+    (device) => device.id === preferredInputDeviceId
+  );
+
   const handleStartRecording = async () => {
     setLatestResult(null);
     const timeLabel = new Date().toLocaleTimeString(
@@ -376,7 +390,7 @@ export function RecordingControlBar({
 
     const newMeeting = createMeetingSession({
       title: dict.recorder.sessionTitle.replace("{time}", timeLabel),
-      audioDeviceUsed: status.activeInputDeviceName,
+      audioDeviceUsed: preferredInput?.name ?? status.activeInputDeviceName,
       isHeadphoneSession: status.isHeadphoneOrAirPodsActive,
       locale,
     });
@@ -384,6 +398,7 @@ export function RecordingControlBar({
     setRecordingTranscribedSec(0);
     const started = await startMicRecording({
       meetingId: newMeeting.id,
+      inputDeviceId: preferredInput?.id ?? null,
       locale,
     });
     if (!started.success) {
@@ -576,7 +591,8 @@ export function RecordingControlBar({
 
   const result = dict.recordingResult;
   const hasLatestResult = latestResult !== null;
-  const isStartBlocked = isProcessingResult || isRecoveryPending;
+  const isStartBlocked =
+    isProcessingResult || isRecoveryPending || isDeviceListPending;
 
   useEffect(() => {
     recordFromNotificationRef.current = () => {
@@ -624,7 +640,27 @@ export function RecordingControlBar({
                 ) : (
                   <Volume2 className="h-3.5 w-3.5 text-orange-400" />
                 )}
-                {status.activeInputDeviceName}
+                <select
+                  aria-label={dict.recorder.inputDeviceLabel}
+                  value={preferredInput?.id ?? ""}
+                  disabled={status.isRecording || isStartBlocked}
+                  onChange={(e) =>
+                    setPreferredInputDeviceId(e.target.value || null)
+                  }
+                  className="max-w-[18rem] truncate rounded-md bg-slate-950 py-0.5 pl-1 text-slate-200 focus:outline-none disabled:opacity-50"
+                >
+                  <option value="">
+                    {dict.recorder.systemDefaultDevice.replace(
+                      "{device}",
+                      status.activeInputDeviceName
+                    )}
+                  </option>
+                  {inputDevices.map((device) => (
+                    <option key={device.id} value={device.id}>
+                      {device.name}
+                    </option>
+                  ))}
+                </select>
               </span>
               <button
                 type="button"

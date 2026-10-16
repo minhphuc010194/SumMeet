@@ -4,7 +4,10 @@ import { AIProviderSettingsModal } from "@/components/settings/AIProviderSetting
 import { getDictionary } from "@/i18n/dictionaries";
 import { useMeetingStore } from "@/store/meeting-store";
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+  isTauri: vi.fn(() => false),
+}));
 
 const dict = getDictionary("en");
 

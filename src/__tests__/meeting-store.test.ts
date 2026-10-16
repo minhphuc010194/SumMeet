@@ -121,6 +121,52 @@ describe("Live transcription offset", () => {
   });
 });
 
+describe("Preferred input device", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useMeetingStore.getState().setPreferredInputDeviceId(null);
+  });
+
+  it("is persisted and restored after a reload", async () => {
+    useMeetingStore.getState().setPreferredInputDeviceId("coreaudio:usb-mic");
+    const persisted = localStorage.getItem(STORAGE_KEY) ?? "";
+    expect(JSON.parse(persisted).state.preferredInputDeviceId).toBe(
+      "coreaudio:usb-mic"
+    );
+
+    useMeetingStore.getState().setPreferredInputDeviceId(null);
+    localStorage.setItem(STORAGE_KEY, persisted);
+    await useMeetingStore.persist.rehydrate();
+
+    expect(useMeetingStore.getState().preferredInputDeviceId).toBe(
+      "coreaudio:usb-mic"
+    );
+  });
+
+  it("defaults to null for state saved before the device choice existed", async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        state: {
+          meetings: [],
+          selectedMeetingId: "",
+          calendarEvents: [],
+          settings: {
+            openRouterModel: "google/gemini-3.1-flash-lite",
+            transcriptionLanguage: "vi",
+          },
+          recordingTranscribedSec: 0,
+        },
+      })
+    );
+
+    await useMeetingStore.persist.rehydrate();
+
+    expect(useMeetingStore.getState().preferredInputDeviceId).toBeNull();
+  });
+});
+
 describe("Call detection setting", () => {
   const SAVED_SETTINGS = {
     openRouterModel: "custom/model",

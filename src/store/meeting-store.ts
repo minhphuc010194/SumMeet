@@ -39,6 +39,7 @@ type PersistedMeetingState = Pick<
   | "calendarEvents"
   | "settings"
   | "recordingTranscribedSec"
+  | "preferredInputDeviceId"
 >;
 
 interface MeetingStoreState {
@@ -50,9 +51,11 @@ interface MeetingStoreState {
   openRouterKeyStatus: OpenRouterKeyStatus;
   currentAudioTimeMs: number;
   recordingTranscribedSec: number;
+  preferredInputDeviceId: string | null;
   selectMeeting: (meetingId: string) => void;
   setCurrentAudioTimeMs: (ms: number) => void;
   setRecordingTranscribedSec: (sec: number) => void;
+  setPreferredInputDeviceId: (id: string | null) => void;
   createMeetingSession: (params: {
     title: string;
     audioDeviceUsed: string;
@@ -96,6 +99,7 @@ export const useMeetingStore = create<MeetingStoreState>()(
       openRouterKeyStatus: "loading",
       currentAudioTimeMs: 0,
       recordingTranscribedSec: 0,
+      preferredInputDeviceId: null,
 
       selectMeeting: (meetingId) =>
         set({ selectedMeetingId: meetingId, currentAudioTimeMs: 0 }),
@@ -103,6 +107,8 @@ export const useMeetingStore = create<MeetingStoreState>()(
       setCurrentAudioTimeMs: (ms) => set({ currentAudioTimeMs: ms }),
 
       setRecordingTranscribedSec: (sec) => set({ recordingTranscribedSec: sec }),
+
+      setPreferredInputDeviceId: (id) => set({ preferredInputDeviceId: id }),
 
       createMeetingSession: ({
         title,
@@ -352,6 +358,7 @@ export const useMeetingStore = create<MeetingStoreState>()(
         calendarEvents: state.calendarEvents,
         settings: state.settings,
         recordingTranscribedSec: state.recordingTranscribedSec,
+        preferredInputDeviceId: state.preferredInputDeviceId,
       }),
     }
   )
