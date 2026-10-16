@@ -20,7 +20,7 @@ On macOS, the red close button only hides the window: SumMeet keeps running (an 
 
 ## Auto-update
 
-SumMeet checks for a new version on launch and every 6 hours. When one is available, a dialog shows the version and release notes. Choose **Update now** to download, install, and restart automatically, or **Later** to be asked again on the next launch or when a newer version appears. Update packages are verified with a signature before they are installed. After you choose **Later**, a round download button stays at the bottom of the sidebar so you can reopen the update. AI settings shows the current version with a **Check for updates** button, and on macOS **SumMeet → Check for Updates…** runs the same check; both show the result in a small panel.
+SumMeet checks for a new version on launch and every 6 hours. When one is available, a dialog shows the new version. Choose **Update now** to download, install, and restart automatically, or **Later** to be asked again on the next launch or when a newer version appears. Update packages are verified with a signature before they are installed. After you choose **Later**, a round download button stays at the bottom of the sidebar so you can reopen the update. AI settings shows the current version with a **Check for updates** button, and on macOS **SumMeet → Check for Updates…** runs the same check; both show the result in a small panel.
 
 ## Development
 
