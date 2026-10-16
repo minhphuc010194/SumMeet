@@ -12,6 +12,7 @@ import {
   Maximize2,
   Mic,
   Minimize2,
+  PhoneCall,
   Square,
   Upload,
   Volume2,
@@ -29,6 +30,10 @@ import {
   enumerateDualStreamDevices,
 } from "@/services/audio/dual-stream-bridge";
 import { transcribeUploadedMedia } from "@/services/audio/media-upload";
+import {
+  requestCallAttention,
+  subscribeMicActivity,
+} from "@/services/audio/mic-activity";
 import {
   getActiveRecording,
   startMicRecording,
@@ -84,6 +89,10 @@ export function RecordingControlBar({
     useState<LatestRecordingResultSummary | null>(null);
   const [resultBoxHeight, setResultBoxHeight] = useState<number>(420);
   const [resultSplitRatio, setResultSplitRatio] = useState<number>(50);
+  const [isCallSuggestionVisible, setIsCallSuggestionVisible] = useState(false);
+  const isCallDetectionEnabled = useMeetingStore(
+    (state) => state.settings.callDetectionEnabled
+  );
   const resultSplitContainerRef = useRef<HTMLDivElement | null>(null);
 
   const activeMeetingIdRef = useRef<string | null>(null);
@@ -92,6 +101,8 @@ export function RecordingControlBar({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const lastDeviceSignatureRef = useRef<string | null>(null);
   const isRecordingRef = useRef(false);
+  const canSuggestCallRef = useRef(false);
+  const wasOtherAppActiveRef = useRef(false);
   const chunkInFlightRef = useRef<Promise<void> | null>(null);
 
   const refreshDevices = useCallback(
@@ -137,6 +148,41 @@ export function RecordingControlBar({
   useEffect(() => {
     isRecordingRef.current = status.isRecording;
   }, [status.isRecording]);
+
+  const isCaptureIdle = !status.isRecording && !isProcessingResult;
+  const canSuggestCall = isCallDetectionEnabled && isCaptureIdle;
+
+  useEffect(() => {
+    canSuggestCallRef.current = canSuggestCall;
+    if (!canSuggestCall) setIsCallSuggestionVisible(false);
+  }, [canSuggestCall]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe: () => void = () => {};
+
+    void subscribeMicActivity((otherAppActive) => {
+      const hasJustBecomeActive =
+        otherAppActive && !wasOtherAppActiveRef.current;
+      wasOtherAppActiveRef.current = otherAppActive;
+      if (!otherAppActive) {
+        setIsCallSuggestionVisible(false);
+        return;
+      }
+      if (hasJustBecomeActive && canSuggestCallRef.current) {
+        setIsCallSuggestionVisible(true);
+        void requestCallAttention();
+      }
+    }).then((stop) => {
+      if (cancelled) stop();
+      else unsubscribe = stop;
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     refreshDevices(false);
@@ -507,7 +553,6 @@ export function RecordingControlBar({
 
   const result = dict.recordingResult;
   const hasLatestResult = latestResult !== null;
-  const isCaptureIdle = !status.isRecording && !isProcessingResult;
   const isStartBlocked = isProcessingResult || isRecoveryPending;
 
   return (
@@ -613,6 +658,46 @@ export function RecordingControlBar({
           )}
         </div>
       </div>
+
+      {isCallSuggestionVisible && (
+        <div
+          role="status"
+          className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-orange-500/50 bg-orange-950/60 px-4 py-3"
+        >
+          <div className="flex items-center gap-3">
+            <PhoneCall className="h-5 w-5 shrink-0 text-orange-400" />
+            <div>
+              <p className="text-sm font-bold text-slate-50">
+                {dict.recorder.callDetectedTitle}
+              </p>
+              <p className="text-[11px] text-orange-300">
+                {dict.recorder.callDetectedHint}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsCallSuggestionVisible(false)}
+              className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2 text-xs font-medium text-slate-300 transition hover:bg-slate-700"
+            >
+              {dict.recorder.callDetectedDismiss}
+            </button>
+            <button
+              type="button"
+              disabled={isStartBlocked}
+              onClick={() => {
+                setIsCallSuggestionVisible(false);
+                handleStartRecording();
+              }}
+              className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-orange-600/30 transition hover:bg-orange-500 disabled:opacity-50"
+            >
+              <Mic className="h-3.5 w-3.5" />
+              {dict.recorder.callDetectedStart}
+            </button>
+          </div>
+        </div>
+      )}
 
       {status.isRecording && (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-orange-500/30 bg-slate-950/80 px-4 py-2.5 text-xs">

@@ -207,6 +207,7 @@ describe("OpenRouter key gate store logic", () => {
     expect(state.settings).toEqual({
       openRouterModel: "google/gemini-3.1-flash-lite",
       transcriptionLanguage: "en",
+      callDetectionEnabled: true,
     });
     expect(state.meetings[0].id).toBe("mtg-keep");
     expect(localStorage.getItem(STORAGE_KEY)).not.toContain("legacy-");

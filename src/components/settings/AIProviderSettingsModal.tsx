@@ -18,7 +18,7 @@ interface AIProviderSettingsModalProps {
 
 type EditableSettings = Pick<
   AIProviderSettings,
-  "openRouterModel" | "transcriptionLanguage"
+  "openRouterModel" | "transcriptionLanguage" | "callDetectionEnabled"
 >;
 
 const FIELD_CLASS =
@@ -47,6 +47,7 @@ export function AIProviderSettingsModal({
       openRouterModel:
         formState.openRouterModel.trim() || DEFAULT_OPENROUTER_MODEL,
       transcriptionLanguage: formState.transcriptionLanguage,
+      callDetectionEnabled: formState.callDetectionEnabled,
     });
     onToast(dict.settings.savedToast);
     onClose();
@@ -130,6 +131,30 @@ export function AIProviderSettingsModal({
                 <option value="auto">{dict.settings.languageOptions.auto}</option>
               </select>
             </div>
+          </div>
+
+          <div className="flex flex-col">
+            <label
+              htmlFor="settings-call-detection"
+              className="flex items-center gap-2 text-xs font-medium text-slate-300"
+            >
+              <input
+                id="settings-call-detection"
+                type="checkbox"
+                checked={formState.callDetectionEnabled}
+                onChange={(e) =>
+                  setFormState({
+                    ...formState,
+                    callDetectionEnabled: e.target.checked,
+                  })
+                }
+                className="h-4 w-4 accent-orange-500"
+              />
+              {dict.settings.callDetectionLabel}
+            </label>
+            <p className="mt-1 pl-6 text-[11px] text-slate-500">
+              {dict.settings.callDetectionHint}
+            </p>
           </div>
 
           <div className="flex items-center justify-end gap-2.5 border-t border-slate-800 pt-4">

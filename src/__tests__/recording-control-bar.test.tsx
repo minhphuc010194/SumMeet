@@ -1,8 +1,20 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RecordingControlBar } from "@/components/recorder/RecordingControlBar";
 import { getDictionary } from "@/i18n/dictionaries";
 import { generateSummaryWithFallback } from "@/services/ai/provider-registry";
+import {
+  requestCallAttention,
+  subscribeMicActivity,
+} from "@/services/audio/mic-activity";
 import {
   getActiveRecording,
   startMicRecording,
@@ -21,6 +33,10 @@ vi.mock("@/services/audio/recording-commands", () => ({
   startMicRecording: vi.fn(),
   stopMicRecording: vi.fn(),
 }));
+vi.mock("@/services/audio/mic-activity", () => ({
+  subscribeMicActivity: vi.fn(async () => () => {}),
+  requestCallAttention: vi.fn(),
+}));
 vi.mock("@/services/audio/recording-transcription", () => ({
   transcribeRecordingSlice: vi.fn(),
   transcribeRecordingTail: vi.fn(),
@@ -35,6 +51,8 @@ const startMock = vi.mocked(startMicRecording);
 const stopMock = vi.mocked(stopMicRecording);
 const tailMock = vi.mocked(transcribeRecordingTail);
 const summaryMock = vi.mocked(generateSummaryWithFallback);
+const subscribeMock = vi.mocked(subscribeMicActivity);
+const attentionMock = vi.mocked(requestCallAttention);
 
 type ActiveRecordingResult = Awaited<ReturnType<typeof getActiveRecording>>;
 
@@ -73,7 +91,7 @@ function summaryFor(meetingId: string): MeetingSummary {
   };
 }
 
-async function recoverAndStopRecording() {
+async function recoverAndStopRecording(whileRecording?: () => void) {
   const meeting = useMeetingStore.getState().createMeetingSession({
     title: "Daily",
     audioDeviceUsed: "Mic",
@@ -108,9 +126,11 @@ async function recoverAndStopRecording() {
   render(
     <RecordingControlBar dict={dict} locale="vi" onToast={onToast} />
   );
-  fireEvent.click(
-    await screen.findByRole("button", { name: dict.recorder.stopRecording })
-  );
+  const stopButton = await screen.findByRole("button", {
+    name: dict.recorder.stopRecording,
+  });
+  whileRecording?.();
+  fireEvent.click(stopButton);
   await waitFor(() =>
     expect(
       useMeetingStore.getState().meetings.find((m) => m.id === meeting.id)
@@ -269,5 +289,148 @@ describe("Recording control bar after a reload", () => {
     expect(useMeetingStore.getState().recordingTranscribedSec).toBe(
       PERSISTED_OFFSET_SEC
     );
+  });
+});
+
+describe("Call detection suggestion", () => {
+  let emitMicActivity: (otherAppActive: boolean) => void = () => {};
+  const unsubscribeMock = vi.fn();
+
+  function emit(otherAppActive: boolean) {
+    act(() => emitMicActivity(otherAppActive));
+  }
+
+  async function renderBar() {
+    render(<RecordingControlBar dict={dict} locale="vi" onToast={vi.fn()} />);
+    await waitFor(() => expect(subscribeMock).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole("button", {
+            name: dict.recorder.startRecording,
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false)
+    );
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    activeMock.mockResolvedValue({ success: true, data: null });
+    subscribeMock.mockImplementation(async (onChange) => {
+      emitMicActivity = onChange;
+      return unsubscribeMock;
+    });
+    useMeetingStore.setState({
+      meetings: [],
+      selectedMeetingId: "",
+      settings: {
+        ...useMeetingStore.getState().settings,
+        callDetectionEnabled: true,
+      },
+    });
+  });
+
+  it("suggests recording once when another app starts using the microphone", async () => {
+    await renderBar();
+    expect(screen.queryByRole("status")).toBeNull();
+
+    emit(true);
+    emit(true);
+
+    expect(screen.getByText(dict.recorder.callDetectedTitle)).toBeTruthy();
+    expect(attentionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the suggestion when the other app releases the microphone", async () => {
+    await renderBar();
+    emit(true);
+
+    emit(false);
+
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("keeps a dismissed suggestion hidden until the next inactive to active change", async () => {
+    await renderBar();
+    emit(true);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dict.recorder.callDetectedDismiss })
+    );
+    emit(true);
+
+    expect(screen.queryByRole("status")).toBeNull();
+
+    emit(false);
+    emit(true);
+
+    expect(screen.getByRole("status")).toBeTruthy();
+    expect(attentionMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts recording from the suggestion and hides it", async () => {
+    startMock.mockResolvedValue({
+      success: true,
+      data: { meetingId: "mtg-call", wavPath: WAV_PATH, startedAtMs: 0 },
+    });
+    await renderBar();
+    emit(true);
+
+    fireEvent.click(
+      within(screen.getByRole("status")).getByRole("button", {
+        name: dict.recorder.callDetectedStart,
+      })
+    );
+
+    expect(screen.queryByRole("status")).toBeNull();
+    await waitFor(() => expect(startMock).toHaveBeenCalledTimes(1));
+    expect(startMock.mock.calls[0][0]).toMatchObject({ locale: "vi" });
+    await screen.findByRole("button", { name: dict.recorder.stopRecording });
+  });
+
+  it("stays silent when call detection is turned off", async () => {
+    useMeetingStore.setState({
+      settings: {
+        ...useMeetingStore.getState().settings,
+        callDetectionEnabled: false,
+      },
+    });
+    await renderBar();
+
+    emit(true);
+
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(attentionMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores microphone activity while its own recording is running", async () => {
+    tailMock.mockResolvedValue({ success: true });
+
+    await recoverAndStopRecording(() => emit(true));
+
+    expect(attentionMock).not.toHaveBeenCalled();
+  });
+
+  it("does not suggest again when a recording ends while the other app is still active", async () => {
+    tailMock.mockResolvedValue({ success: true });
+    await recoverAndStopRecording(() => emit(true));
+    const startButton = (await screen.findByRole("button", {
+      name: dict.recorder.startRecording,
+    })) as HTMLButtonElement;
+    await waitFor(() => expect(startButton.disabled).toBe(false));
+
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(attentionMock).not.toHaveBeenCalled();
+  });
+
+  it("unsubscribes when the control bar unmounts", async () => {
+    await renderBar();
+
+    cleanup();
+
+    expect(unsubscribeMock).toHaveBeenCalledTimes(1);
   });
 });
