@@ -192,27 +192,26 @@ pub fn list_system_audio_devices() -> Vec<AudioDeviceInfo> {
     let host = cpal::default_host();
     let mut devices_list = Vec::new();
 
-    let default_input_name = host
-        .default_input_device()
-        .and_then(|d| d.name().ok())
-        .unwrap_or_default();
-
-    let default_output_name = host
-        .default_output_device()
-        .and_then(|d| d.name().ok())
-        .unwrap_or_default();
+    let default_input_id = host.default_input_device().and_then(|d| d.id().ok());
+    let default_output_id = host.default_output_device().and_then(|d| d.id().ok());
 
     if let Ok(inputs) = host.input_devices() {
         for (idx, device) in inputs.enumerate() {
-            let name = device.name().unwrap_or_else(|_| format!("Input Device {}", idx));
+            let Ok(device_id) = device.id() else {
+                continue;
+            };
+            let name = device
+                .description()
+                .map(|d| d.name().to_string())
+                .unwrap_or_else(|_| format!("Input Device {}", idx));
             let config = device.default_input_config().ok();
-            let sample_rate = config.as_ref().map(|c| c.sample_rate().0).unwrap_or(48_000);
+            let sample_rate = config.as_ref().map(|c| c.sample_rate()).unwrap_or(48_000);
             let channels = config.as_ref().map(|c| c.channels()).unwrap_or(1);
-            let is_default = name == default_input_name;
+            let is_default = default_input_id.as_ref() == Some(&device_id);
             let is_headphone = detect_headphone_or_airpods(&name);
 
             devices_list.push(AudioDeviceInfo {
-                id: format!("in-{}", idx),
+                id: device_id.to_string(),
                 name,
                 is_input: true,
                 is_output: false,
@@ -226,15 +225,21 @@ pub fn list_system_audio_devices() -> Vec<AudioDeviceInfo> {
 
     if let Ok(outputs) = host.output_devices() {
         for (idx, device) in outputs.enumerate() {
-            let name = device.name().unwrap_or_else(|_| format!("Output Device {}", idx));
+            let Ok(device_id) = device.id() else {
+                continue;
+            };
+            let name = device
+                .description()
+                .map(|d| d.name().to_string())
+                .unwrap_or_else(|_| format!("Output Device {}", idx));
             let config = device.default_output_config().ok();
-            let sample_rate = config.as_ref().map(|c| c.sample_rate().0).unwrap_or(48_000);
+            let sample_rate = config.as_ref().map(|c| c.sample_rate()).unwrap_or(48_000);
             let channels = config.as_ref().map(|c| c.channels()).unwrap_or(2);
-            let is_default = name == default_output_name;
+            let is_default = default_output_id.as_ref() == Some(&device_id);
             let is_headphone = detect_headphone_or_airpods(&name);
 
             devices_list.push(AudioDeviceInfo {
-                id: format!("out-{}", idx),
+                id: device_id.to_string(),
                 name,
                 is_input: false,
                 is_output: true,

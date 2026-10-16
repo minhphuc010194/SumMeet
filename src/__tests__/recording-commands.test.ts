@@ -34,7 +34,10 @@ describe("Recording command wrappers", () => {
     vi.restoreAllMocks();
   });
 
-  it("starts a recording with the meeting id", async () => {
+  it.each([
+    ["the chosen device id", "coreaudio:usb-mic"],
+    ["null for the system default", null],
+  ])("starts a recording with the meeting id and %s", async (_, inputDeviceId) => {
     const started = {
       meetingId: "mtg-1",
       wavPath: RECORDING_FILE.wavPath,
@@ -42,10 +45,15 @@ describe("Recording command wrappers", () => {
     };
     invokeMock.mockResolvedValue(started);
 
-    const result = await startMicRecording({ meetingId: "mtg-1", locale: "en" });
+    const result = await startMicRecording({
+      meetingId: "mtg-1",
+      inputDeviceId,
+      locale: "en",
+    });
 
     expect(invokeMock).toHaveBeenCalledWith("start_mic_recording", {
       meetingId: "mtg-1",
+      options: { inputDeviceId },
     });
     expect(result).toEqual({ success: true, data: started });
   });
@@ -126,12 +134,21 @@ describe("Recording command wrappers", () => {
   it.each([
     ["no_input_device", "noInputDevice"],
     ["recording_active", "recordingActive"],
+    ["input_device_unavailable", "inputDeviceUnavailable"],
     ["capture_thread_panicked", "recordingFailed"],
   ] as const)("maps the %s error code to a localized message", async (code, key) => {
     invokeMock.mockRejectedValue(code);
 
-    const vietnamese = await startMicRecording({ meetingId: "mtg-1", locale: "vi" });
-    const english = await startMicRecording({ meetingId: "mtg-1", locale: "en" });
+    const vietnamese = await startMicRecording({
+      meetingId: "mtg-1",
+      inputDeviceId: null,
+      locale: "vi",
+    });
+    const english = await startMicRecording({
+      meetingId: "mtg-1",
+      inputDeviceId: null,
+      locale: "en",
+    });
 
     expect(vietnamese).toEqual({
       success: false,
