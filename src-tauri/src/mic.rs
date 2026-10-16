@@ -1,6 +1,6 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{FromSample, Sample, SampleFormat, SizedSample};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::BufWriter;
 use std::path::{Path, PathBuf};
@@ -33,6 +33,18 @@ struct ActiveRecording {
     thread: JoinHandle<Result<(), String>>,
 }
 
+#[derive(Deserialize, Default)]
+#[serde(default, rename_all = "camelCase")]
+pub struct RecordingOptions {
+    input_device_id: Option<String>,
+}
+
+struct StartRequest<'a> {
+    meeting_id: String,
+    dir: &'a Path,
+    options: RecordingOptions,
+}
+
 #[derive(Default)]
 pub struct MicRecorder(Mutex<Option<ActiveRecording>>);
 
@@ -45,7 +57,8 @@ impl MicRecorder {
         self.active().as_ref().map(|rec| rec.wav_path.clone())
     }
 
-    fn start(&self, meeting_id: String, dir: &Path) -> Result<RecordingStart, String> {
+    fn start(&self, request: StartRequest<'_>) -> Result<RecordingStart, String> {
+        let StartRequest { meeting_id, dir, options } = request;
         let wav_path = recording_path(dir, &meeting_id)?;
         let mut active = self.active();
         if active.is_some() {
@@ -57,7 +70,9 @@ impl MicRecorder {
         let level = Arc::new(AtomicU32::new(0));
         let thread = {
             let (wav_path, callback_tx, level) = (wav_path.clone(), tx.clone(), level.clone());
-            thread::spawn(move || capture_session(&wav_path, callback_tx, rx, &level, ready_tx))
+            thread::spawn(move || {
+                capture_session(&wav_path, callback_tx, rx, &level, ready_tx, &options)
+            })
         };
         ready_rx.recv().map_err(|e| e.to_string())??;
 
@@ -128,9 +143,9 @@ pub fn write_block(
 
 fn build_stream<T>(
     device: &cpal::Device,
-    config: &cpal::StreamConfig,
+    config: cpal::StreamConfig,
     tx: Sender<CaptureMsg>,
-) -> Result<cpal::Stream, cpal::BuildStreamError>
+) -> Result<cpal::Stream, cpal::Error>
 where
     T: SizedSample,
     f32: FromSample<T>,
@@ -146,21 +161,34 @@ where
     )
 }
 
-fn open_input(tx: Sender<CaptureMsg>) -> Result<(cpal::Stream, u16, u32), String> {
-    let device = cpal::default_host()
-        .default_input_device()
-        .ok_or("no_input_device")?;
+fn open_input(
+    tx: Sender<CaptureMsg>,
+    options: &RecordingOptions,
+) -> Result<(cpal::Stream, u16, u32), String> {
+    let host = cpal::default_host();
+    let device = match options.input_device_id.as_deref() {
+        None => host.default_input_device().ok_or("no_input_device")?,
+        Some(id) => id
+            .parse::<cpal::DeviceId>()
+            .ok()
+            .and_then(|parsed| host.device_by_id(&parsed))
+            .filter(|device| device.supports_input())
+            .ok_or("input_device_unavailable")?,
+    };
     let supported = device.default_input_config().map_err(|e| e.to_string())?;
     let config = supported.config();
+    if config.sample_rate == 0 || config.channels == 0 {
+        return Err("unsupported_stream_config".to_string());
+    }
     let stream = match supported.sample_format() {
-        SampleFormat::F32 => build_stream::<f32>(&device, &config, tx),
-        SampleFormat::I16 => build_stream::<i16>(&device, &config, tx),
-        SampleFormat::U16 => build_stream::<u16>(&device, &config, tx),
+        SampleFormat::F32 => build_stream::<f32>(&device, config, tx),
+        SampleFormat::I16 => build_stream::<i16>(&device, config, tx),
+        SampleFormat::U16 => build_stream::<u16>(&device, config, tx),
         other => return Err(format!("unsupported_sample_format: {other}")),
     }
     .map_err(|e| e.to_string())?;
     stream.play().map_err(|e| e.to_string())?;
-    Ok((stream, config.channels, config.sample_rate.0))
+    Ok((stream, config.channels, config.sample_rate))
 }
 
 fn capture_session(
@@ -169,8 +197,9 @@ fn capture_session(
     rx: Receiver<CaptureMsg>,
     level: &AtomicU32,
     ready: Sender<Result<(), String>>,
+    options: &RecordingOptions,
 ) -> Result<(), String> {
-    let setup = open_input(callback_tx).and_then(|input| {
+    let setup = open_input(callback_tx, options).and_then(|input| {
         let mut writer =
             hound::WavWriter::create(wav_path, stt_wav_spec()).map_err(|e| e.to_string())?;
         writer.flush().map_err(|e| e.to_string())?;
@@ -207,10 +236,15 @@ fn capture_session(
 #[tauri::command(async)]
 pub fn start_mic_recording(
     meeting_id: String,
+    options: Option<RecordingOptions>,
     recorder: State<'_, MicRecorder>,
     dir: State<'_, RecordingsDir>,
 ) -> Result<RecordingStart, String> {
-    recorder.start(meeting_id, &dir.0)
+    recorder.start(StartRequest {
+        meeting_id,
+        dir: &dir.0,
+        options: options.unwrap_or_default(),
+    })
 }
 
 #[tauri::command(async)]
@@ -304,12 +338,18 @@ mod tests {
         let active_path = dir.join("mtg-1.wav");
         let (recorder, _stopped) = recorder_with_active(active_path.clone(), || Ok(()));
 
+        let request = |meeting_id: &str| StartRequest {
+            meeting_id: meeting_id.to_string(),
+            dir: &dir,
+            options: RecordingOptions::default(),
+        };
+
         assert_eq!(
-            recorder.start("mtg-2".to_string(), &dir).err(),
+            recorder.start(request("mtg-2")).err(),
             Some("recording_active".to_string())
         );
         assert_eq!(
-            recorder.start(String::new(), &dir).err(),
+            recorder.start(request("")).err(),
             Some("invalid_meeting_id".to_string())
         );
         assert_eq!(recorder.active_wav_path(), Some(active_path));
@@ -394,5 +434,86 @@ mod tests {
         );
         assert_eq!(panicking.active_wav_path(), None);
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_recording_options_read_camel_case_device_id_and_ignore_unknown_keys() {
+        let options: RecordingOptions =
+            serde_json::from_str(r#"{"inputDeviceId":"x","includeSystemAudio":true}"#).unwrap();
+
+        assert_eq!(options.input_device_id, Some("x".to_string()));
+    }
+
+    #[test]
+    fn test_recording_options_default_to_no_device_when_empty() {
+        let options: RecordingOptions = serde_json::from_str("{}").unwrap();
+
+        assert_eq!(options.input_device_id, None);
+    }
+
+    #[test]
+    fn test_recording_start_serializes_camel_case_keys() {
+        let start = RecordingStart {
+            meeting_id: "mtg-1".to_string(),
+            wav_path: "/tmp/mtg-1.wav".to_string(),
+            started_at_ms: 7,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&start).unwrap(),
+            serde_json::json!({
+                "meetingId": "mtg-1",
+                "wavPath": "/tmp/mtg-1.wav",
+                "startedAtMs": 7,
+            })
+        );
+    }
+
+    #[test]
+    fn test_open_input_reports_unparsable_device_id_as_unavailable() {
+        let (tx, _rx) = channel();
+        let options = RecordingOptions {
+            input_device_id: Some("not-a-device-id".to_string()),
+        };
+
+        assert_eq!(
+            open_input(tx, &options).err(),
+            Some("input_device_unavailable".to_string())
+        );
+    }
+
+    #[test]
+    fn test_open_input_reports_unknown_well_formed_device_id_as_unavailable() {
+        let (tx, _rx) = channel();
+        let options = RecordingOptions {
+            input_device_id: Some(format!("{}:no-such-device", cpal::default_host().id())),
+        };
+
+        assert_eq!(
+            open_input(tx, &options).err(),
+            Some("input_device_unavailable".to_string())
+        );
+    }
+
+    #[test]
+    fn test_open_input_rejects_output_only_device_id_as_unavailable() {
+        let Some(output) = cpal::default_host().default_output_device() else {
+            return;
+        };
+        let Ok(output_id) = output.id() else {
+            return;
+        };
+        if output.supports_input() {
+            return;
+        }
+        let (tx, _rx) = channel();
+        let options = RecordingOptions {
+            input_device_id: Some(output_id.to_string()),
+        };
+
+        assert_eq!(
+            open_input(tx, &options).err(),
+            Some("input_device_unavailable".to_string())
+        );
     }
 }

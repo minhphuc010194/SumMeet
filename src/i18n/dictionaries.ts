@@ -24,6 +24,8 @@ export interface Dictionary {
     readyTitle: string;
     recordingTitle: string;
     captureHint: string;
+    inputDeviceLabel: string;
+    systemDefaultDevice: string;
     startRecording: string;
     stopRecording: string;
     includeSystemAudio: string;
@@ -215,6 +217,7 @@ export interface Dictionary {
     networkError: string;
     keychainError: string;
     noInputDevice: string;
+    inputDeviceUnavailable: string;
     recordingActive: string;
     recordingFailed: string;
     unsupportedMedia: string;
@@ -264,7 +267,9 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       controlsLabel: "Điều khiển ghi âm cuộc họp",
       readyTitle: "Ghi âm & Tóm tắt tự động (Microphone)",
       recordingTitle: "Đang thu âm từ Microphone...",
-      captureHint: "• Thu từ micro mặc định của máy (chỉ âm thanh, không quay màn hình)",
+      captureHint: "• Thu từ micro đã chọn (chỉ âm thanh, không quay màn hình)",
+      inputDeviceLabel: "Micro dùng để ghi âm",
+      systemDefaultDevice: "Mặc định hệ thống ({device})",
       startRecording: "Bắt đầu ghi âm",
       stopRecording: "Dừng & Tóm tắt",
       includeSystemAudio: "Thu cả âm thanh hệ thống (Zoom/Meet/Teams)",
@@ -461,6 +466,7 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       networkError: "Không thể kết nối tới OpenRouter. Kiểm tra mạng rồi thử lại.",
       keychainError: "Không thể truy cập kho khóa của hệ điều hành.",
       noInputDevice: "Không tìm thấy micro. Hãy kiểm tra thiết bị đầu vào và quyền truy cập micro rồi thử lại.",
+      inputDeviceUnavailable: "Không tìm thấy micro đã chọn. Hãy chọn micro khác hoặc dùng mặc định hệ thống rồi thử lại.",
       recordingActive: "Đang có một bản ghi âm chạy. Hãy dừng bản ghi âm đó trước.",
       recordingFailed: "Thao tác ghi âm không thành công. Vui lòng thử lại.",
       unsupportedMedia: "Không thể giải mã file này. Hãy dùng định dạng WAV, MP3, AAC, M4A, OGG hoặc FLAC.",
@@ -508,7 +514,9 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       controlsLabel: "Meeting recorder controls",
       readyTitle: "One-Click Auto Recorder (Microphone)",
       recordingTitle: "Recording from the microphone...",
-      captureHint: "• Captures the default microphone (audio only, no screen video)",
+      captureHint: "• Captures the selected microphone (audio only, no screen video)",
+      inputDeviceLabel: "Recording microphone",
+      systemDefaultDevice: "System default ({device})",
       startRecording: "Start Recording",
       stopRecording: "Stop & Summarize",
       includeSystemAudio: "Capture system audio (Zoom/Meet/Teams)",
@@ -705,6 +713,7 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       networkError: "Could not reach OpenRouter. Check your network and try again.",
       keychainError: "Could not access the operating system credential store.",
       noInputDevice: "No microphone found. Check your input device and microphone permission, then try again.",
+      inputDeviceUnavailable: "The selected microphone isn't available. Choose another one or use the system default, then try again.",
       recordingActive: "A recording is already running. Stop it first.",
       recordingFailed: "The recording operation failed. Please try again.",
       unsupportedMedia: "Could not decode this file. Use WAV, MP3, AAC, M4A, OGG or FLAC.",

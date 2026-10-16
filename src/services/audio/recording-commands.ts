@@ -50,18 +50,25 @@ async function invokeRecordingCommand<T>(params: {
     if (code === "recording_active") {
       return { success: false, error: errors.recordingActive };
     }
+    if (code === "input_device_unavailable") {
+      return { success: false, error: errors.inputDeviceUnavailable };
+    }
     return { success: false, error: errors.recordingFailed };
   }
 }
 
 export function startMicRecording(params: {
   meetingId: string;
+  inputDeviceId: string | null;
   locale: SupportedLocale;
 }): Promise<ApiResponse<RecordingStart>> {
   return invokeRecordingCommand({
     command: "start_mic_recording",
     locale: params.locale,
-    args: { meetingId: params.meetingId },
+    args: {
+      meetingId: params.meetingId,
+      options: { inputDeviceId: params.inputDeviceId },
+    },
   });
 }
 
