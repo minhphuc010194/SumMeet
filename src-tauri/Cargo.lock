@@ -4038,6 +4038,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "uuid",
+ "windows",
 ]
 
 [[package]]
