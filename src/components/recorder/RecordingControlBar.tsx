@@ -32,6 +32,7 @@ import {
 import { transcribeUploadedMedia } from "@/services/audio/media-upload";
 import {
   requestCallAttention,
+  subscribeCallActions,
   subscribeMicActivity,
 } from "@/services/audio/mic-activity";
 import {
@@ -103,6 +104,7 @@ export function RecordingControlBar({
   const isRecordingRef = useRef(false);
   const canSuggestCallRef = useRef(false);
   const wasOtherAppActiveRef = useRef(false);
+  const recordFromNotificationRef = useRef<() => void>(() => {});
   const chunkInFlightRef = useRef<Promise<void> | null>(null);
 
   const refreshDevices = useCallback(
@@ -176,6 +178,24 @@ export function RecordingControlBar({
           body: dict.recorder.callDetectedBody,
         });
       }
+    }).then((stop) => {
+      if (cancelled) stop();
+      else unsubscribe = stop;
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [dict]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe: () => void = () => {};
+
+    void subscribeCallActions({
+      recordTitle: dict.recorder.callDetectedAction,
+      onRecord: () => recordFromNotificationRef.current(),
     }).then((stop) => {
       if (cancelled) stop();
       else unsubscribe = stop;
@@ -557,6 +577,13 @@ export function RecordingControlBar({
   const result = dict.recordingResult;
   const hasLatestResult = latestResult !== null;
   const isStartBlocked = isProcessingResult || isRecoveryPending;
+
+  useEffect(() => {
+    recordFromNotificationRef.current = () => {
+      if (status.isRecording || isStartBlocked) return;
+      void handleStartRecording();
+    };
+  });
 
   return (
     <section
