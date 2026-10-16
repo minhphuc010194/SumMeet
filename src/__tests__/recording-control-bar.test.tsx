@@ -8,6 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import { invoke, type PluginListener } from "@tauri-apps/api/core";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   isPermissionGranted,
@@ -20,6 +21,7 @@ import { RecordingControlBar } from "@/components/recorder/RecordingControlBar";
 import { getDictionary } from "@/i18n/dictionaries";
 import { generateSummaryWithFallback } from "@/services/ai/provider-registry";
 import {
+  announceCallDetection,
   requestCallAttention,
   subscribeCallActions,
   subscribeMicActivity,
@@ -67,6 +69,7 @@ vi.mock("@/services/audio/mic-activity", () => ({
   subscribeMicActivity: vi.fn(async () => () => {}),
   subscribeCallActions: vi.fn(async () => () => {}),
   requestCallAttention: vi.fn(),
+  announceCallDetection: vi.fn(),
 }));
 vi.mock("@/services/audio/recording-transcription", () => ({
   transcribeRecordingSlice: vi.fn(),
@@ -89,6 +92,7 @@ const subscribeActionsMock = vi.mocked(subscribeCallActions);
 const onActionMock = vi.mocked(onAction);
 const registerMock = vi.mocked(registerActionTypes);
 const attentionMock = vi.mocked(requestCallAttention);
+const announceMock = vi.mocked(announceCallDetection);
 const grantedMock = vi.mocked(isPermissionGranted);
 const requestPermissionMock = vi.mocked(requestPermission);
 const sendMock = vi.mocked(sendNotification);
@@ -412,6 +416,17 @@ describe("Call detection suggestion", () => {
     act(() => emitMicActivity(otherAppActive));
   }
 
+  function setCallDetection(callDetectionEnabled: boolean) {
+    act(() =>
+      useMeetingStore.setState({
+        settings: {
+          ...useMeetingStore.getState().settings,
+          callDetectionEnabled,
+        },
+      })
+    );
+  }
+
   function recordFromActionButton() {
     act(() => recordFromNotification());
   }
@@ -476,6 +491,7 @@ describe("Call detection suggestion", () => {
       selectedMeetingId: "",
       preferredInputDeviceId: null,
       includeSystemAudio: false,
+      hasAnnouncedCallDetection: false,
       settings: {
         ...useMeetingStore.getState().settings,
         callDetectionEnabled: true,
@@ -485,6 +501,74 @@ describe("Call detection suggestion", () => {
 
   afterEach(() => {
     invokeMock.mockReset();
+  });
+
+  it("announces call detection once with the localized intro and marks it announced", async () => {
+    await renderBar();
+
+    expect(announceMock).toHaveBeenCalledTimes(1);
+    expect(announceMock).toHaveBeenCalledWith({
+      title: dict.recorder.callDetectionIntroTitle,
+      body: dict.recorder.callDetectionIntroBody,
+    });
+    expect(useMeetingStore.getState().hasAnnouncedCallDetection).toBe(true);
+  });
+
+  it("announces only once when React runs the effects twice", async () => {
+    render(
+      <StrictMode>
+        <RecordingControlBar dict={dict} locale="vi" onToast={vi.fn()} />
+      </StrictMode>
+    );
+
+    await waitFor(() => expect(subscribeMock).toHaveBeenCalled());
+    expect(announceMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not announce when it was already announced", async () => {
+    useMeetingStore.setState({ hasAnnouncedCallDetection: true });
+
+    await renderBar();
+    setCallDetection(false);
+    setCallDetection(true);
+
+    expect(announceMock).not.toHaveBeenCalled();
+  });
+
+  it("does not announce again after toggling detection off and on", async () => {
+    await renderBar();
+
+    setCallDetection(false);
+    setCallDetection(true);
+
+    expect(announceMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not announce again when the control bar is remounted", async () => {
+    const { unmount } = render(
+      <RecordingControlBar dict={dict} locale="vi" onToast={vi.fn()} />
+    );
+    unmount();
+
+    render(<RecordingControlBar dict={dict} locale="vi" onToast={vi.fn()} />);
+
+    await waitFor(() => expect(subscribeMock).toHaveBeenCalledTimes(2));
+    expect(announceMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("announces only after call detection is enabled", async () => {
+    setCallDetection(false);
+    await renderBar();
+    expect(announceMock).not.toHaveBeenCalled();
+    expect(useMeetingStore.getState().hasAnnouncedCallDetection).toBe(false);
+
+    setCallDetection(true);
+
+    expect(announceMock).toHaveBeenCalledTimes(1);
+    expect(announceMock).toHaveBeenCalledWith({
+      title: dict.recorder.callDetectionIntroTitle,
+      body: dict.recorder.callDetectionIntroBody,
+    });
   });
 
   it("suggests recording once when another app starts using the microphone", async () => {

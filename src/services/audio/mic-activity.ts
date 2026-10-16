@@ -71,6 +71,17 @@ export async function subscribeCallActions(options: {
   }
 }
 
+export async function announceCallDetection(notification: {
+  title: string;
+  body: string;
+}): Promise<void> {
+  try {
+    sendNotification(notification);
+  } catch (error) {
+    logFailure("announceCallDetection", error);
+  }
+}
+
 export async function requestCallAttention(notification: {
   title: string;
   body: string;

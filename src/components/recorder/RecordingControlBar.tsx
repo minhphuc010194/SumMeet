@@ -32,6 +32,7 @@ import {
 } from "@/services/audio/dual-stream-bridge";
 import { transcribeUploadedMedia } from "@/services/audio/media-upload";
 import {
+  announceCallDetection,
   requestCallAttention,
   subscribeCallActions,
   subscribeMicActivity,
@@ -111,6 +112,7 @@ export function RecordingControlBar({
     setPreferredInputDeviceId,
     includeSystemAudio,
     setIncludeSystemAudio,
+    markCallDetectionAnnounced,
   } = useMeetingStore();
 
   const [status, setStatus] = useState<DualStreamStatus>(() =>
@@ -206,6 +208,16 @@ export function RecordingControlBar({
     canSuggestCallRef.current = canSuggestCall;
     if (!canSuggestCall) setIsCallSuggestionVisible(false);
   }, [canSuggestCall]);
+
+  useEffect(() => {
+    if (!isCallDetectionEnabled) return;
+    if (useMeetingStore.getState().hasAnnouncedCallDetection) return;
+    markCallDetectionAnnounced();
+    void announceCallDetection({
+      title: dict.recorder.callDetectionIntroTitle,
+      body: dict.recorder.callDetectionIntroBody,
+    });
+  }, [isCallDetectionEnabled, dict, markCallDetectionAnnounced]);
 
   useEffect(() => {
     let cancelled = false;

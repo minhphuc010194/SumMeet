@@ -42,6 +42,7 @@ type PersistedMeetingState = Pick<
   | "recordingSystemTranscribedSec"
   | "preferredInputDeviceId"
   | "includeSystemAudio"
+  | "hasAnnouncedCallDetection"
 >;
 
 interface MeetingStoreState {
@@ -56,12 +57,14 @@ interface MeetingStoreState {
   recordingSystemTranscribedSec: number;
   preferredInputDeviceId: string | null;
   includeSystemAudio: boolean;
+  hasAnnouncedCallDetection: boolean;
   selectMeeting: (meetingId: string) => void;
   setCurrentAudioTimeMs: (ms: number) => void;
   setRecordingTranscribedSec: (sec: number) => void;
   setRecordingSystemTranscribedSec: (sec: number) => void;
   setPreferredInputDeviceId: (id: string | null) => void;
   setIncludeSystemAudio: (include: boolean) => void;
+  markCallDetectionAnnounced: () => void;
   createMeetingSession: (params: {
     title: string;
     audioDeviceUsed: string;
@@ -108,6 +111,7 @@ export const useMeetingStore = create<MeetingStoreState>()(
       recordingSystemTranscribedSec: 0,
       preferredInputDeviceId: null,
       includeSystemAudio: false,
+      hasAnnouncedCallDetection: false,
 
       selectMeeting: (meetingId) =>
         set({ selectedMeetingId: meetingId, currentAudioTimeMs: 0 }),
@@ -122,6 +126,8 @@ export const useMeetingStore = create<MeetingStoreState>()(
       setPreferredInputDeviceId: (id) => set({ preferredInputDeviceId: id }),
 
       setIncludeSystemAudio: (include) => set({ includeSystemAudio: include }),
+
+      markCallDetectionAnnounced: () => set({ hasAnnouncedCallDetection: true }),
 
       createMeetingSession: ({
         title,
@@ -374,6 +380,7 @@ export const useMeetingStore = create<MeetingStoreState>()(
         recordingSystemTranscribedSec: state.recordingSystemTranscribedSec,
         preferredInputDeviceId: state.preferredInputDeviceId,
         includeSystemAudio: state.includeSystemAudio,
+        hasAnnouncedCallDetection: state.hasAnnouncedCallDetection,
       }),
     }
   )

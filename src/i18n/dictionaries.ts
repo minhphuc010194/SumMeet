@@ -51,6 +51,8 @@ export interface Dictionary {
     callDetectedStart: string;
     callDetectedDismiss: string;
     systemSignal: string;
+    callDetectionIntroTitle: string;
+    callDetectionIntroBody: string;
   };
   recordingResult: {
     title: string;
@@ -307,6 +309,8 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       callDetectedStart: "Bắt đầu ghi âm",
       callDetectedDismiss: "Bỏ qua",
       systemSignal: "Hệ thống:",
+      callDetectionIntroTitle: "SumMeet sẽ báo khi bạn vào cuộc gọi",
+      callDetectionIntroBody: "Khi ứng dụng khác bắt đầu dùng micro, SumMeet sẽ gợi ý ghi âm bằng thông báo như thế này.",
     },
     recordingResult: {
       title: "Kết quả vừa thu: {title}",
@@ -566,6 +570,8 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       callDetectedStart: "Start recording",
       callDetectedDismiss: "Dismiss",
       systemSignal: "System:",
+      callDetectionIntroTitle: "SumMeet will notify you when a call starts",
+      callDetectionIntroBody: "When another app starts using your microphone, SumMeet will suggest recording with a notification like this.",
     },
     recordingResult: {
       title: "Latest Recording Result: {title}",
