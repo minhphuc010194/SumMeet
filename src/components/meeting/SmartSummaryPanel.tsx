@@ -49,39 +49,78 @@ export function SmartSummaryPanel({
     meeting.summary.templateId || "general"
   );
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const transcribedSecRef = React.useRef<{ id: string; sec: number }>({
+    id: meeting.id,
+    sec: 0,
+  });
 
   const handleRegenerateSummary = async (templateOverride?: SummaryTemplateId) => {
     const targetTemplate = templateOverride ?? selectedTemplate;
     setIsRegenerating(true);
 
     try {
+      if (transcribedSecRef.current.id !== meeting.id) {
+        transcribedSecRef.current = { id: meeting.id, sec: 0 };
+      }
+      const segmentEndSec = meeting.segments.reduce(
+        (maxSec, seg) => Math.max(maxSec, Math.ceil(seg.endMs / 1000)),
+        0
+      );
+      const resumeStartSec = Math.max(
+        transcribedSecRef.current.sec,
+        segmentEndSec
+      );
+      const isDiskRecording = !meeting.audioDataUrl?.startsWith("blob:");
+      const isTranscriptIncomplete =
+        meeting.segments.length === 0 ||
+        resumeStartSec < meeting.durationSeconds;
+      const shouldTranscribeTail = isDiskRecording && isTranscriptIncomplete;
+
       let segments = meeting.segments;
-      if (segments.length === 0) {
+      if (shouldTranscribeTail) {
         const tail = await transcribeRecordingTail({
           meetingId: meeting.id,
-          startSec: 0,
+          startSec: resumeStartSec,
           maxSliceSec: 30,
           apiKey: openRouterKey,
           model: settings.openRouterModel,
           locale,
           transcriptionLanguage: settings.transcriptionLanguage,
-          onSegments: (newSegments) =>
+          onSegments: (newSegments, nextStartSec) => {
+            if (typeof nextStartSec === "number") {
+              transcribedSecRef.current = {
+                id: meeting.id,
+                sec: Math.max(transcribedSecRef.current.sec, nextStartSec),
+              };
+            }
             newSegments.forEach((seg) =>
               appendTranscriptSegment(meeting.id, seg)
-            ),
+            );
+          },
         });
         segments =
           useMeetingStore
             .getState()
             .meetings.find((m) => m.id === meeting.id)?.segments ?? [];
-        if (!tail.success && segments.length === 0) {
+        if (tail.success) {
+          transcribedSecRef.current = {
+            id: meeting.id,
+            sec: Math.max(
+              transcribedSecRef.current.sec,
+              meeting.durationSeconds
+            ),
+          };
+        } else {
           const errorMessage = tail.error ?? dict.errors.transcriptionFailed;
-          updateMeetingSummary(meeting.id, {
-            ...meeting.summary,
-            overview: errorMessage,
-          });
+          if (segments.length === 0) {
+            updateMeetingSummary(meeting.id, {
+              ...meeting.summary,
+              overview: errorMessage,
+            });
+            onToast(errorMessage);
+            return;
+          }
           onToast(errorMessage);
-          return;
         }
       }
 

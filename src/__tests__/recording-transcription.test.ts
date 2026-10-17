@@ -292,4 +292,32 @@ describe("Recording tail transcription after stop", () => {
 
     expect(result).toEqual({ success: false, error: "read failed" });
   });
+
+  it("passes nextStartSec to onSegments and retries a failed slice when maxSliceSec is set", async () => {
+    stubRecordingOfSeconds(60);
+    transcribeMock
+      .mockResolvedValueOnce({ success: false, error: "transient error" })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { segments: [], providerUsed: "Silence Gate" },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { segments: [segmentAt(30)], providerUsed: "OpenRouter" },
+      });
+    const offsets: number[] = [];
+
+    const result = await transcribeRecordingTail({
+      ...TAIL_PARAMS,
+      startSec: 0,
+      maxSliceSec: 30,
+      onSegments: (_, nextStartSec) => {
+        if (typeof nextStartSec === "number") offsets.push(nextStartSec);
+      },
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(offsets).toEqual([30, 60, 60]);
+  });
 });
+
