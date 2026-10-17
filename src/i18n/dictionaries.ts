@@ -815,8 +815,8 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
 };
 
 export function getDictionary(locale: string): Dictionary {
-  if (locale === "en") {
-    return DICTIONARIES.en;
+  if (locale === "vi") {
+    return DICTIONARIES.vi;
   }
-  return DICTIONARIES.vi;
+  return DICTIONARIES.en;
 }

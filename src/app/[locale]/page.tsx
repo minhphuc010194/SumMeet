@@ -4,7 +4,7 @@ import { OpenRouterKeyGate } from "@/components/onboarding/OpenRouterKeyGate";
 import type { SupportedLocale } from "@/types/meeting";
 
 export function generateStaticParams() {
-  return [{ locale: "vi" }, { locale: "en" }];
+  return [{ locale: "en" }, { locale: "vi" }];
 }
 
 export default async function LocaleHomePage({
@@ -13,7 +13,7 @@ export default async function LocaleHomePage({
   params: Promise<{ locale: string }>;
 }) {
   const resolved = await params;
-  const locale: SupportedLocale = resolved.locale === "en" ? "en" : "vi";
+  const locale: SupportedLocale = resolved.locale === "vi" ? "vi" : "en";
 
   return (
     <OpenRouterKeyGate locale={locale}>
