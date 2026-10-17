@@ -4,6 +4,7 @@ import React, { useEffect, type ReactNode } from "react";
 import { KeyRound, Loader2 } from "lucide-react";
 import { OpenRouterKeyForm } from "@/components/onboarding/OpenRouterKeyForm";
 import { getDictionary } from "@/i18n/dictionaries";
+import { setupTrayMenu } from "@/services/tray";
 import type { SupportedLocale } from "@/types/meeting";
 import { useMeetingStore } from "@/store/meeting-store";
 
@@ -20,6 +21,13 @@ export function OpenRouterKeyGate({ locale, children }: OpenRouterKeyGateProps) 
   useEffect(() => {
     void loadOpenRouterKey();
   }, [loadOpenRouterKey]);
+
+  useEffect(() => {
+    void setupTrayMenu({
+      openLabel: dict.tray.openLabel,
+      quitLabel: dict.tray.quitLabel,
+    });
+  }, [dict]);
 
   if (keyStatus === "loading") {
     return (
