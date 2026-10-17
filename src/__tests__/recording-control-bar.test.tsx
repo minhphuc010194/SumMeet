@@ -407,13 +407,16 @@ describe("Recording control bar after a reload", () => {
 });
 
 describe("Call detection suggestion", () => {
-  let emitMicActivity: (otherAppActive: boolean) => void = () => {};
+  let emitMicActivity: (
+    otherAppActive: boolean,
+    activeApp?: string | null
+  ) => void = () => {};
   let recordFromNotification: () => void = () => {};
   const unsubscribeMock = vi.fn();
   const unsubscribeActionsMock = vi.fn();
 
-  function emit(otherAppActive: boolean) {
-    act(() => emitMicActivity(otherAppActive));
+  function emit(otherAppActive: boolean, activeApp?: string | null) {
+    act(() => emitMicActivity(otherAppActive, activeApp));
   }
 
   function setCallDetection(callDetectionEnabled: boolean) {
@@ -579,10 +582,27 @@ describe("Call detection suggestion", () => {
     emit(true);
 
     expect(screen.getByText(dict.recorder.callDetectedTitle)).toBeTruthy();
+    expect(screen.getByText(dict.recorder.callDetectedHint)).toBeTruthy();
     expect(attentionMock).toHaveBeenCalledTimes(1);
     expect(attentionMock).toHaveBeenCalledWith({
       title: dict.recorder.callDetectedTitle,
       body: dict.recorder.callDetectedBody,
+    });
+  });
+
+  it("includes the detected app name in the banner and notification when available", async () => {
+    await renderBar();
+
+    emit(true, "FaceTime");
+
+    expect(
+      screen.getByText(
+        dict.recorder.callDetectedAppHint.replace("{app}", "FaceTime")
+      )
+    ).toBeTruthy();
+    expect(attentionMock).toHaveBeenCalledWith({
+      title: dict.recorder.callDetectedTitle,
+      body: dict.recorder.callDetectedAppBody.replace("{app}", "FaceTime"),
     });
   });
 

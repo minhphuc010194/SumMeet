@@ -10,6 +10,7 @@ import {
 
 interface MicActivityPayload {
   otherAppActive: boolean;
+  activeApp?: string | null;
 }
 
 const CALL_ACTION_TYPE_ID = "call-detected";
@@ -23,11 +24,11 @@ function logFailure(context: string, error: unknown) {
 }
 
 export async function subscribeMicActivity(
-  onChange: (otherAppActive: boolean) => void
+  onChange: (otherAppActive: boolean, activeApp?: string | null) => void
 ): Promise<() => void> {
   try {
     return await listen<MicActivityPayload>("mic-activity", (event) =>
-      onChange(event.payload.otherAppActive)
+      onChange(event.payload.otherAppActive, event.payload.activeApp ?? null)
     );
   } catch (error) {
     logFailure("listen", error);

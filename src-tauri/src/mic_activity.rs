@@ -6,10 +6,11 @@ use tauri::{AppHandle, Emitter};
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
 const IGNORED_BUNDLE_IDS: &[&str] = &["com.apple.CoreSpeech"];
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MicActivity {
     other_app_active: bool,
+    active_app: Option<String>,
 }
 
 #[cfg(target_os = "macos")]
@@ -147,13 +148,50 @@ fn input_processes() -> Result<Vec<(i32, u32, String)>, i32> {
     Ok(Vec::new())
 }
 
-fn has_other_app_input(processes: &[(i32, u32, String)], own_pid: i32) -> bool {
-    processes.iter().any(|(pid, running_input, bundle_id)| {
+fn detect_mic_activity(processes: &[(i32, u32, String)], own_pid: i32) -> MicActivity {
+    let mut other_app_active = false;
+    for (pid, running_input, bundle_id) in processes {
         let is_running_input = *running_input != 0;
         let is_own_process = *pid == own_pid;
         let is_ignored = IGNORED_BUNDLE_IDS.contains(&bundle_id.as_str());
-        is_running_input && !is_own_process && !is_ignored
-    })
+        let is_other_active_app = is_running_input && !is_own_process && !is_ignored;
+        if !is_other_active_app {
+            continue;
+        }
+        other_app_active = true;
+        let active_app = match bundle_id.as_str() {
+            "us.zoom.xos" => Some("Zoom".to_string()),
+            "com.apple.FaceTime" => Some("FaceTime".to_string()),
+            "com.google.Chrome" => Some("Google Chrome".to_string()),
+            "com.microsoft.teams" | "com.microsoft.teams2" => Some("Microsoft Teams".to_string()),
+            "com.tinyspeck.slackmacgap" => Some("Slack".to_string()),
+            "com.hnc.Discord" => Some("Discord".to_string()),
+            "com.vng.zalo" => Some("Zalo".to_string()),
+            "com.apple.Safari" => Some("Safari".to_string()),
+            "org.mozilla.firefox" => Some("Firefox".to_string()),
+            "com.microsoft.edgemac" => Some("Microsoft Edge".to_string()),
+            "company.thebrowser.Browser" => Some("Arc".to_string()),
+            "com.brave.Browser" => Some("Brave".to_string()),
+            "ru.keepcoder.Telegram" | "org.telegram.desktop" => Some("Telegram".to_string()),
+            "net.whatsapp.WhatsApp" => Some("WhatsApp".to_string()),
+            "com.cisco.webexmeetingsapp" => Some("Webex".to_string()),
+            other => other
+                .rsplit('.')
+                .next()
+                .filter(|name| !name.is_empty())
+                .map(str::to_string),
+        };
+        if active_app.is_some() {
+            return MicActivity {
+                other_app_active: true,
+                active_app,
+            };
+        }
+    }
+    MicActivity {
+        other_app_active,
+        active_app: None,
+    }
 }
 
 pub fn spawn_watcher(app: AppHandle) {
@@ -161,20 +199,23 @@ pub fn spawn_watcher(app: AppHandle) {
         let own_pid = std::process::id() as i32;
         let mut last_error = None;
         loop {
-            let other_app_active = match input_processes() {
+            let activity = match input_processes() {
                 Ok(processes) => {
                     last_error = None;
-                    has_other_app_input(&processes, own_pid)
+                    detect_mic_activity(&processes, own_pid)
                 }
                 Err(status) => {
                     if last_error != Some(status) {
                         eprintln!("[MicActivity] Audio input query failed: status {status}");
                         last_error = Some(status);
                     }
-                    false
+                    MicActivity {
+                        other_app_active: false,
+                        active_app: None,
+                    }
                 }
             };
-            let _ = app.emit("mic-activity", MicActivity { other_app_active });
+            let _ = app.emit("mic-activity", activity);
             thread::sleep(POLL_INTERVAL);
         }
     });
@@ -194,51 +235,104 @@ mod tests {
 
     #[test]
     fn ignores_own_process_running_input() {
-        assert!(!has_other_app_input(&[process(OWN_PID, 1, "")], OWN_PID));
+        assert_eq!(
+            detect_mic_activity(&[process(OWN_PID, 1, "")], OWN_PID),
+            MicActivity {
+                other_app_active: false,
+                active_app: None,
+            }
+        );
     }
 
     #[test]
-    fn detects_other_process_running_input() {
-        assert!(has_other_app_input(&[process(OTHER_PID, 1, "")], OWN_PID));
+    fn detects_other_process_running_input_without_bundle_id() {
+        assert_eq!(
+            detect_mic_activity(&[process(OTHER_PID, 1, "")], OWN_PID),
+            MicActivity {
+                other_app_active: true,
+                active_app: None,
+            }
+        );
     }
 
     #[test]
     fn detects_other_process_alongside_own_recording() {
-        assert!(has_other_app_input(
-            &[process(OWN_PID, 1, ""), process(OTHER_PID, 1, "")],
-            OWN_PID
-        ));
+        assert_eq!(
+            detect_mic_activity(
+                &[process(OWN_PID, 1, ""), process(OTHER_PID, 1, "us.zoom.xos")],
+                OWN_PID
+            ),
+            MicActivity {
+                other_app_active: true,
+                active_app: Some("Zoom".to_string()),
+            }
+        );
     }
 
     #[test]
     fn ignores_idle_processes() {
-        assert!(!has_other_app_input(
-            &[process(OTHER_PID, 0, ""), process(OWN_PID, 0, "")],
-            OWN_PID
-        ));
+        assert_eq!(
+            detect_mic_activity(
+                &[process(OTHER_PID, 0, "us.zoom.xos"), process(OWN_PID, 0, "")],
+                OWN_PID
+            ),
+            MicActivity {
+                other_app_active: false,
+                active_app: None,
+            }
+        );
     }
 
     #[test]
     fn reports_inactive_without_processes() {
-        assert!(!has_other_app_input(&[], OWN_PID));
+        assert_eq!(
+            detect_mic_activity(&[], OWN_PID),
+            MicActivity {
+                other_app_active: false,
+                active_app: None,
+            }
+        );
     }
 
     #[test]
     fn ignores_core_speech_running_input() {
-        assert!(!has_other_app_input(
-            &[process(CORE_SPEECH_PID, 1, "com.apple.CoreSpeech")],
-            OWN_PID
-        ));
+        assert_eq!(
+            detect_mic_activity(
+                &[process(CORE_SPEECH_PID, 1, "com.apple.CoreSpeech")],
+                OWN_PID
+            ),
+            MicActivity {
+                other_app_active: false,
+                active_app: None,
+            }
+        );
     }
 
     #[test]
     fn detects_call_app_alongside_core_speech() {
-        assert!(has_other_app_input(
-            &[
-                process(CORE_SPEECH_PID, 1, "com.apple.CoreSpeech"),
-                process(OTHER_PID, 1, "com.apple.FaceTime")
-            ],
-            OWN_PID
-        ));
+        assert_eq!(
+            detect_mic_activity(
+                &[
+                    process(CORE_SPEECH_PID, 1, "com.apple.CoreSpeech"),
+                    process(OTHER_PID, 1, "com.apple.FaceTime")
+                ],
+                OWN_PID
+            ),
+            MicActivity {
+                other_app_active: true,
+                active_app: Some("FaceTime".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn falls_back_to_bundle_id_tail_for_unknown_bundle_ids() {
+        assert_eq!(
+            detect_mic_activity(&[process(OTHER_PID, 1, "org.jitsi.JitsiMeet")], OWN_PID),
+            MicActivity {
+                other_app_active: true,
+                active_app: Some("JitsiMeet".to_string()),
+            }
+        );
     }
 }
