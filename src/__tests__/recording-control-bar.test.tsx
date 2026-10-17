@@ -1638,5 +1638,101 @@ describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", (
     );
     expect(summaryMock).not.toHaveBeenCalled();
   });
+
+  it("resumes transcription from the last transcribed second when a recording was interrupted partway through", async () => {
+    const meeting = useMeetingStore.getState().createMeetingSession({
+      title: "Interrupted Meeting",
+      audioDeviceUsed: "Mic",
+      isHeadphoneSession: false,
+      locale: "en",
+    });
+    const firstPartSegment = {
+      ...segmentFor(meeting.id),
+      id: "seg-part-1",
+      startMs: 56_000,
+      endMs: 60_000,
+    };
+    useMeetingStore
+      .getState()
+      .appendTranscriptSegment(meeting.id, firstPartSegment);
+    useMeetingStore.getState().completeMeetingRecording(meeting.id, 180);
+
+    const secondPartSegment = {
+      ...segmentFor(meeting.id),
+      id: "seg-part-2",
+      startMs: 60_000,
+      endMs: 64_000,
+      text: "Recovered remainder",
+    };
+    tailMock.mockImplementationOnce(async ({ onSegments }) => {
+      onSegments([secondPartSegment], 120);
+      return {
+        success: false,
+        error: dictEn.errors.transcriptionFailed,
+      };
+    });
+    summaryMock.mockResolvedValue({
+      success: true,
+      data: summaryFor(meeting.id),
+    });
+
+    const onToast = vi.fn();
+    const { rerender } = render(
+      <SmartSummaryPanel
+        meeting={useMeetingStore.getState().meetings[0]}
+        dict={dictEn}
+        locale="en"
+        onToast={onToast}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dictEn.summary.regenerateButton })
+    );
+
+    await waitFor(() => expect(summaryMock).toHaveBeenCalledTimes(1));
+    expect(tailMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        meetingId: meeting.id,
+        startSec: 60,
+        maxSliceSec: 30,
+      })
+    );
+    expect(onToast).toHaveBeenCalledWith(dictEn.errors.transcriptionFailed);
+    expect(summaryMock.mock.calls[0][0].segments).toEqual([
+      firstPartSegment,
+      secondPartSegment,
+    ]);
+
+    tailMock.mockImplementationOnce(async ({ onSegments }) => {
+      onSegments([], 180);
+      return { success: true };
+    });
+
+    rerender(
+      <SmartSummaryPanel
+        meeting={useMeetingStore.getState().meetings[0]}
+        dict={dictEn}
+        locale="en"
+        onToast={onToast}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dictEn.summary.regenerateButton })
+    );
+
+    await waitFor(() => expect(summaryMock).toHaveBeenCalledTimes(2));
+    expect(tailMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        meetingId: meeting.id,
+        startSec: 120,
+        maxSliceSec: 30,
+      })
+    );
+  });
 });
+
 

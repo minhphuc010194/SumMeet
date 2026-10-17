@@ -76,7 +76,7 @@ export async function transcribeRecordingTail(params: {
   model: string;
   locale: SupportedLocale;
   transcriptionLanguage: AIProviderSettings["transcriptionLanguage"];
-  onSegments: (segments: TranscriptSegment[]) => void;
+  onSegments: (segments: TranscriptSegment[], nextStartSec?: number) => void;
 }): Promise<ApiResponse<null>> {
   const { onSegments, ...sliceParams } = params;
   let startSec = params.startSec;
@@ -98,7 +98,7 @@ export async function transcribeRecordingTail(params: {
       return { success: false, error: tail.error };
     }
 
-    onSegments(tail.data.segments);
+    onSegments(tail.data.segments, tail.data.nextStartSec);
     hasMoreAudio = tail.data.nextStartSec > startSec;
     startSec = tail.data.nextStartSec;
   }
