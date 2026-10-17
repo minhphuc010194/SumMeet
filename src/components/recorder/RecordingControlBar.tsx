@@ -710,41 +710,41 @@ export function RecordingControlBar({
   return (
     <section
       aria-label={dict.recorder.controlsLabel}
-      className="rounded-2xl border border-orange-500/40 bg-gradient-to-r from-slate-900 via-orange-950/50 to-slate-900 p-4 shadow-xl"
+      className="rounded-xl border border-orange-500/40 bg-gradient-to-r from-slate-900 via-orange-950/50 to-slate-900 p-3 shadow-lg"
     >
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
           <div
-            className={`flex h-12 w-12 items-center justify-center rounded-2xl border ${
+            className={`flex h-9 w-9 items-center justify-center rounded-xl border ${
               status.isRecording
                 ? "animate-pulse border-rose-500 bg-rose-500/20 text-rose-400"
                 : "border-orange-500/40 bg-orange-500/20 text-orange-300"
             }`}
           >
-            <Mic className="h-6 w-6" />
+            <Mic className="h-4 w-4" />
           </div>
 
           <div>
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h2 className="text-base font-bold text-slate-50">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-sm font-bold text-slate-50">
                 {status.isRecording
                   ? dict.recorder.recordingTitle
                   : dict.recorder.readyTitle}
               </h2>
 
               {status.isRecording && (
-                <span className="rounded-lg bg-rose-600 px-2.5 py-0.5 font-mono text-sm font-bold text-white shadow">
+                <span className="rounded-md bg-rose-600 px-2 py-0.5 font-mono text-xs font-bold text-white shadow">
                   ● {formatTimer(status.durationSeconds)}
                 </span>
               )}
             </div>
 
-            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-300">
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-300">
               <span className="inline-flex items-center gap-1 rounded-md bg-slate-800/90 px-2 py-0.5 text-slate-200">
                 {status.isHeadphoneOrAirPodsActive ? (
-                  <Headphones className="h-3.5 w-3.5 text-emerald-400" />
+                  <Headphones className="h-3 w-3 text-emerald-400" />
                 ) : (
-                  <Volume2 className="h-3.5 w-3.5 text-orange-400" />
+                  <Volume2 className="h-3 w-3 text-orange-400" />
                 )}
                 <select
                   aria-label={dict.recorder.inputDeviceLabel}
@@ -753,7 +753,7 @@ export function RecordingControlBar({
                   onChange={(e) =>
                     setPreferredInputDeviceId(e.target.value || null)
                   }
-                  className="max-w-[18rem] truncate rounded-md bg-slate-950 py-0.5 pl-1 text-slate-200 focus:outline-none disabled:opacity-50"
+                  className="max-w-[16rem] truncate rounded-md bg-slate-950 py-0.5 pl-1 text-slate-200 focus:outline-none disabled:opacity-50"
                 >
                   <option value="">
                     {dict.recorder.systemDefaultDevice.replace(
@@ -806,7 +806,7 @@ export function RecordingControlBar({
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <input
             ref={fileInputRef}
             type="file"
@@ -820,7 +820,7 @@ export function RecordingControlBar({
               type="button"
               disabled={isProcessingResult}
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700 disabled:opacity-50"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700 disabled:opacity-50"
             >
               <Upload className="h-3.5 w-3.5 text-orange-400" />
               {dict.nav.uploadFile}
@@ -832,18 +832,18 @@ export function RecordingControlBar({
               type="button"
               disabled={isStartBlocked}
               onClick={handleStartRecording}
-              className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-orange-600/30 transition hover:bg-orange-500 disabled:opacity-50"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-orange-600 px-3.5 text-xs font-semibold text-white shadow-sm shadow-orange-600/25 transition hover:bg-orange-500 disabled:opacity-50"
             >
-              <Mic className="h-4 w-4" />
+              <Mic className="h-3.5 w-3.5" />
               {dict.recorder.startRecording}
             </button>
           ) : (
             <button
               type="button"
               onClick={handleStopRecording}
-              className="inline-flex items-center gap-2 rounded-xl bg-rose-600 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-rose-600/40 transition hover:bg-rose-500"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-rose-600 px-3.5 text-xs font-semibold text-white shadow-sm shadow-rose-600/30 transition hover:bg-rose-500"
             >
-              <Square className="h-4 w-4" />
+              <Square className="h-3.5 w-3.5" />
               {dict.recorder.stopRecording}
             </button>
           )}
@@ -853,12 +853,12 @@ export function RecordingControlBar({
       {isCallSuggestionVisible && (
         <div
           role="status"
-          className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-orange-500/50 bg-orange-950/60 px-4 py-3"
+          className="mt-2.5 flex flex-wrap items-center justify-between gap-2.5 rounded-lg border border-orange-500/50 bg-orange-950/60 px-3 py-2"
         >
-          <div className="flex items-center gap-3">
-            <PhoneCall className="h-5 w-5 shrink-0 text-orange-400" />
+          <div className="flex items-center gap-2.5">
+            <PhoneCall className="h-4 w-4 shrink-0 text-orange-400" />
             <div>
-              <p className="text-sm font-bold text-slate-50">
+              <p className="text-xs font-bold text-slate-50">
                 {dict.recorder.callDetectedTitle}
               </p>
               <p className="text-[11px] text-orange-300">
@@ -871,11 +871,11 @@ export function RecordingControlBar({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             <button
               type="button"
               onClick={() => setIsCallSuggestionVisible(false)}
-              className="inline-flex items-center rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2 text-xs font-medium text-slate-300 transition hover:bg-slate-700"
+              className="inline-flex h-7 items-center rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 text-xs font-medium text-slate-300 transition hover:bg-slate-700"
             >
               {dict.recorder.callDetectedDismiss}
             </button>
@@ -886,9 +886,9 @@ export function RecordingControlBar({
                 setIsCallSuggestionVisible(false);
                 handleStartRecording();
               }}
-              className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white shadow-lg shadow-orange-600/30 transition hover:bg-orange-500 disabled:opacity-50"
+              className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-orange-600 px-3 text-xs font-semibold text-white shadow-sm shadow-orange-600/25 transition hover:bg-orange-500 disabled:opacity-50"
             >
-              <Mic className="h-3.5 w-3.5" />
+              <Mic className="h-3 w-3" />
               {dict.recorder.callDetectedStart}
             </button>
           </div>

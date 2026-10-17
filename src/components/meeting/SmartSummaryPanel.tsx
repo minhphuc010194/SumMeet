@@ -84,8 +84,8 @@ export function SmartSummaryPanel({
   return (
     <div className="flex h-full flex-col space-y-4 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
       {/* Top Template Selector & Regenerate Control */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           <label
             htmlFor="summary-template-select"
             className="text-xs font-medium text-slate-400"
@@ -100,7 +100,7 @@ export function SmartSummaryPanel({
               setSelectedTemplate(nextTemplate);
               handleRegenerateSummary(nextTemplate);
             }}
-            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs font-medium text-slate-100 focus:border-orange-500 focus:outline-none"
+            className="h-7 rounded-lg border border-slate-700 bg-slate-950 px-2.5 text-xs font-medium text-slate-100 focus:border-orange-500 focus:outline-none"
           >
             <option value="general">{dict.summary.templates.general}</option>
             <option value="sales">{dict.summary.templates.sales}</option>
@@ -109,8 +109,8 @@ export function SmartSummaryPanel({
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-lg border border-slate-700/80 bg-slate-950 px-2.5 py-1 text-[11px] text-slate-400">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-700/80 bg-slate-950 px-2 text-[11px] text-slate-400">
             <Cpu className="h-3 w-3 text-orange-400" />
             {dict.summary.providerBadge} {summary.providerUsed}
           </span>
@@ -119,9 +119,9 @@ export function SmartSummaryPanel({
             type="button"
             disabled={isRegenerating}
             onClick={() => handleRegenerateSummary()}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-orange-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-orange-500 disabled:opacity-50"
+            className="inline-flex h-7 items-center gap-1 rounded-lg bg-orange-600 px-2.5 text-xs font-semibold text-white transition hover:bg-orange-500 disabled:opacity-50"
           >
-            <Sparkles className="h-3.5 w-3.5" />
+            <Sparkles className="h-3 w-3" />
             {isRegenerating
               ? dict.summary.regenerating
               : dict.summary.regenerateButton}

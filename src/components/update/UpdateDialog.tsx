@@ -91,7 +91,7 @@ export function UpdateDialog({ locale }: UpdateDialogProps) {
           type="button"
           onClick={dismiss}
           disabled={isInstalling}
-          className="inline-flex h-10 items-center rounded-lg border border-slate-700/90 bg-slate-950 px-5 text-xs font-semibold text-slate-300 transition hover:bg-slate-800 hover:text-slate-50 disabled:opacity-50"
+          className="inline-flex h-8 items-center rounded-lg border border-slate-700/90 bg-slate-950 px-3.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-800 hover:text-slate-50 disabled:opacity-50"
         >
           {dict.later}
         </button>
@@ -99,7 +99,7 @@ export function UpdateDialog({ locale }: UpdateDialogProps) {
           type="button"
           onClick={() => void installUpdate()}
           disabled={isInstalling}
-          className="inline-flex h-10 items-center rounded-lg bg-orange-600 px-5 text-xs font-semibold text-white shadow-md shadow-orange-600/20 transition hover:bg-orange-500 disabled:opacity-50"
+          className="inline-flex h-8 items-center rounded-lg bg-orange-600 px-3.5 text-xs font-semibold text-white shadow-sm shadow-orange-600/20 transition hover:bg-orange-500 disabled:opacity-50"
         >
           {dict.updateNow}
         </button>

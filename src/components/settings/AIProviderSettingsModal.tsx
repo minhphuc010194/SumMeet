@@ -27,7 +27,7 @@ type EditableSettings = Pick<
 >;
 
 const FIELD_CLASS =
-  "h-10 w-full rounded-lg border border-slate-700/90 bg-slate-950 px-3.5 text-xs text-slate-100 placeholder-slate-500 transition focus:border-orange-500 focus:outline-none";
+  "h-8 w-full rounded-lg border border-slate-700/90 bg-slate-950 px-3 text-xs text-slate-100 placeholder-slate-500 transition focus:border-orange-500 focus:outline-none";
 
 const LABEL_CLASS = "mb-1.5 flex items-center text-xs font-medium text-slate-300";
 
@@ -95,9 +95,9 @@ export function AIProviderSettingsModal({
       title={dict.settings.title}
       subtitle={dict.settings.subtitle}
     >
-      <div className="space-y-4">
-        <section className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4">
-          <h3 className="mb-3 border-b border-emerald-500/20 pb-2.5 text-xs font-bold text-emerald-300">
+      <div className="space-y-3.5">
+        <section className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-3.5">
+          <h3 className="mb-2.5 border-b border-emerald-500/20 pb-2 text-xs font-bold text-emerald-300">
             {dict.settings.keyTitle}
           </h3>
           <OpenRouterKeyForm
@@ -109,7 +109,7 @@ export function AIProviderSettingsModal({
           <button
             type="button"
             onClick={handleRemoveKey}
-            className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-950/20 px-4 text-xs font-medium text-rose-300 transition hover:bg-rose-900/40"
+            className="mt-2.5 inline-flex h-8 items-center gap-1.5 rounded-lg border border-rose-500/40 bg-rose-950/20 px-3 text-xs font-medium text-rose-300 transition hover:bg-rose-900/40"
           >
             <Trash2 className="h-3.5 w-3.5" />
             {dict.settings.keyRemoveButton}
@@ -118,8 +118,8 @@ export function AIProviderSettingsModal({
 
         <UpdateSettingsSection locale={dict.locale} />
 
-        <form onSubmit={handleSave} className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <form onSubmit={handleSave} className="space-y-3.5">
+          <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
             <div className="flex flex-col">
               <label htmlFor="settings-openrouter-model" className={LABEL_CLASS}>
                 {dict.settings.modelLabel}
@@ -178,11 +178,11 @@ export function AIProviderSettingsModal({
                     callDetectionEnabled: e.target.checked,
                   })
                 }
-                className="h-4 w-4 accent-orange-500"
+                className="h-3.5 w-3.5 accent-orange-500"
               />
               {dict.settings.callDetectionLabel}
             </label>
-            <p className="mt-1 pl-6 text-[11px] text-slate-500">
+            <p className="mt-0.5 pl-5.5 text-[11px] text-slate-500">
               {dict.settings.callDetectionHint}
             </p>
           </div>
@@ -197,28 +197,28 @@ export function AIProviderSettingsModal({
                 type="checkbox"
                 checked={autostart}
                 onChange={(e) => setAutostartChoice(e.target.checked)}
-                className="h-4 w-4 accent-orange-500"
+                className="h-3.5 w-3.5 accent-orange-500"
               />
               {dict.settings.autostartLabel}
             </label>
-            <p className="mt-1 pl-6 text-[11px] text-slate-500">
+            <p className="mt-0.5 pl-5.5 text-[11px] text-slate-500">
               {dict.settings.autostartHint}
             </p>
           </div>
 
-          <div className="flex items-center justify-end gap-2.5 border-t border-slate-800 pt-4">
+          <div className="flex items-center justify-end gap-2 border-t border-slate-800 pt-3">
             <button
               type="button"
               onClick={onClose}
-              className="h-10 rounded-lg border border-slate-700 bg-slate-800 px-4 text-xs font-medium text-slate-200 transition hover:bg-slate-700"
+              className="h-8 rounded-lg border border-slate-700 bg-slate-800 px-3.5 text-xs font-medium text-slate-200 transition hover:bg-slate-700"
             >
               {dict.settings.closeButton}
             </button>
             <button
               type="submit"
-              className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-orange-600 px-5 text-xs font-semibold text-white shadow-md shadow-orange-600/20 transition hover:bg-orange-500"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-orange-600 px-4 text-xs font-semibold text-white shadow-sm shadow-orange-600/20 transition hover:bg-orange-500"
             >
-              <Save className="h-4 w-4" />
+              <Save className="h-3.5 w-3.5" />
               {dict.settings.saveButton}
             </button>
           </div>

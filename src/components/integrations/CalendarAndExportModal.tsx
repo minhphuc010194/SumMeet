@@ -106,22 +106,22 @@ export function CalendarAndExportModal({
                 type="url"
                 value={icalUrl}
                 onChange={(e) => setIcalUrl(e.target.value)}
-                className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100"
+                className="h-8 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-xs text-slate-100"
               />
               <button
                 type="submit"
-                className="rounded-xl bg-orange-600 px-4 py-2 text-xs font-semibold text-white hover:bg-orange-500"
+                className="h-8 rounded-lg bg-orange-600 px-3 text-xs font-semibold text-white hover:bg-orange-500"
               >
                 {dict.calendar.syncButton}
               </button>
             </div>
           </form>
 
-          <div className="space-y-2.5 pt-2">
+          <div className="space-y-2 pt-1">
             {calendarEvents.map((evt) => (
               <div
                 key={evt.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3.5"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/70 p-3"
               >
                 <div>
                   <div className="flex items-center gap-2">
@@ -157,7 +157,7 @@ export function CalendarAndExportModal({
                       )
                     );
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-500"
                 >
                   <Video className="h-3.5 w-3.5" />
                   {dict.calendar.recordThisMeeting}
@@ -182,12 +182,12 @@ export function CalendarAndExportModal({
           <button
             type="button"
             onClick={handleCopyMarkdown}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs font-semibold text-slate-100 hover:bg-slate-700"
           >
             {copiedMd ? (
-              <Check className="h-4 w-4 text-emerald-400" />
+              <Check className="h-3.5 w-3.5 text-emerald-400" />
             ) : (
-              <Copy className="h-4 w-4 text-orange-400" />
+              <Copy className="h-3.5 w-3.5 text-orange-400" />
             )}
             {copiedMd ? dict.exportModal.copied : dict.exportModal.copyMarkdown}
           </button>
@@ -195,18 +195,18 @@ export function CalendarAndExportModal({
           <button
             type="button"
             onClick={handleDownloadMarkdown}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-orange-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-orange-500"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-orange-600 px-3 text-xs font-semibold text-white hover:bg-orange-500"
           >
-            <Download className="h-4 w-4" />
+            <Download className="h-3.5 w-3.5" />
             {dict.exportModal.downloadMarkdown}
           </button>
 
           <button
             type="button"
             onClick={handlePrintPdf}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-100 hover:bg-slate-700"
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs font-semibold text-slate-100 hover:bg-slate-700"
           >
-            <Printer className="h-4 w-4 text-orange-400" />
+            <Printer className="h-3.5 w-3.5 text-orange-400" />
             {dict.exportModal.printPdfButton}
           </button>
         </div>

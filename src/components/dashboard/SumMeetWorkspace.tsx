@@ -55,6 +55,7 @@ import {
   useThemeStore,
   type ThemePreference,
 } from "@/store/theme-store";
+import { useUpdateStore } from "@/store/update-store";
 
 const NEXT_THEME: Record<ThemePreference, ThemePreference> = {
   system: "light",
@@ -77,6 +78,8 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
     deleteMeeting,
     clearAllMeetings,
   } = useMeetingStore();
+  const appVersion = useUpdateStore((state) => state.appVersion);
+  const loadAppVersion = useUpdateStore((state) => state.loadAppVersion);
   const { theme, setTheme } = useThemeStore();
   const ThemeIcon = THEME_ICONS[theme];
   const themeLabel = `${dict.theme.label}: ${dict.theme[theme]}`;
@@ -87,11 +90,15 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
       onClick={() => setTheme(NEXT_THEME[theme])}
       title={themeLabel}
       aria-label={themeLabel}
-      className="rounded-lg border border-slate-800 bg-slate-950 p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-50"
+      className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-slate-800 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-50"
     >
-      <ThemeIcon className="h-4 w-4" />
+      <ThemeIcon className="h-3.5 w-3.5" />
     </button>
   );
+
+  useEffect(() => {
+    void loadAppVersion();
+  }, [loadAppVersion]);
 
   useEffect(() => {
     void useThemeStore.persist.rehydrate();
@@ -107,9 +114,32 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
   );
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isLocaleMenuOpen, setIsLocaleMenuOpen] = useState(false);
+  const localeMenuRef = useRef<HTMLDivElement | null>(null);
   const [mainSplitRatio, setMainSplitRatio] = useState<number>(54);
   const [mainPaneHeight, setMainPaneHeight] = useState<number>(640);
   const mainSplitContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isLocaleMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (
+        localeMenuRef.current &&
+        !localeMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsLocaleMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsLocaleMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isLocaleMenuOpen]);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [diskFiles, setDiskFiles] = useState<RecordingFile[]>([]);
@@ -215,51 +245,72 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
     <div className="flex min-h-screen flex-col bg-slate-950 text-slate-100 lg:h-screen lg:flex-row lg:overflow-hidden">
       {/* Left Navigation & Recording Manager Sidebar */}
       {!isSidebarCollapsed && (
-        <aside className="flex w-full shrink-0 flex-col border-b border-slate-800/90 bg-slate-900/90 lg:w-80 lg:border-r lg:border-b-0">
+        <aside className="flex w-full shrink-0 flex-col border-b border-slate-800/90 bg-slate-900/90 lg:w-72 lg:border-r lg:border-b-0">
           {/* Brand Header */}
-          <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3.5">
-            <div className="flex items-center gap-2.5">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-800 px-3 py-2.5">
+            <div className="flex min-w-0 items-center gap-2">
               <Image
                 src="/logo-mark.png"
                 alt=""
-                width={36}
-                height={36}
-                className="h-9 w-9 rounded-xl shadow-md shadow-orange-600/20"
+                width={28}
+                height={28}
+                className="h-7 w-7 shrink-0 rounded-lg shadow-sm shadow-orange-600/20"
               />
-              <div>
-                <h1 className="text-sm font-bold tracking-tight text-slate-50">
+              <div className="min-w-0 leading-tight">
+                <h1 className="truncate text-xs font-bold tracking-tight whitespace-nowrap text-slate-50">
                   {dict.appName}
                 </h1>
-                <p className="text-[10px] text-orange-300">
-                  {dict.workspace.brandSubtitle}
+                <p className="text-[10px] font-medium whitespace-nowrap text-orange-300">
+                  {appVersion ? `v${appVersion}` : "—"}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5">
-              {/* Locale Switcher */}
-              <div className="flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 p-0.5 text-[11px]">
-                <Globe className="ml-1.5 h-3 w-3 text-slate-400" />
-                <Link
-                  href="/vi"
-                  className={`rounded-md px-2 py-0.5 font-semibold transition ${
-                    locale === "vi"
-                      ? "bg-orange-600 text-white"
-                      : "text-slate-400 hover:text-slate-50"
-                  }`}
+            <div className="flex shrink-0 items-center gap-1">
+              {/* Locale Switcher Dropdown */}
+              <div ref={localeMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsLocaleMenuOpen((prev) => !prev)}
+                  aria-expanded={isLocaleMenuOpen}
+                  aria-haspopup="listbox"
+                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 px-2 text-[11px] font-semibold text-slate-200 transition hover:bg-slate-800 hover:text-slate-50"
                 >
-                  VI
-                </Link>
-                <Link
-                  href="/en"
-                  className={`rounded-md px-2 py-0.5 font-semibold transition ${
-                    locale === "en"
-                      ? "bg-orange-600 text-white"
-                      : "text-slate-400 hover:text-slate-50"
-                  }`}
-                >
-                  EN
-                </Link>
+                  <Globe className="h-3.5 w-3.5 text-orange-400" />
+                  <span>{locale.toUpperCase()}</span>
+                </button>
+
+                {isLocaleMenuOpen && (
+                  <div
+                    role="listbox"
+                    className="absolute right-0 z-30 mt-1 w-32 rounded-lg border border-slate-800 bg-slate-900 p-1 text-xs shadow-lg"
+                  >
+                    {(["vi", "en"] as const).map((itemLocale) => {
+                      const isSelected = locale === itemLocale;
+                      return (
+                        <Link
+                          key={itemLocale}
+                          href={`/${itemLocale}`}
+                          role="option"
+                          aria-selected={isSelected}
+                          onClick={() => setIsLocaleMenuOpen(false)}
+                          className={`flex items-center justify-between rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+                            isSelected
+                              ? "bg-orange-600 text-white"
+                              : "text-slate-200 hover:bg-slate-800 hover:text-slate-50"
+                          }`}
+                        >
+                          <span>
+                            {dict.settings.languageOptions[itemLocale]}
+                          </span>
+                          <span className="text-[10px] uppercase opacity-80">
+                            {itemLocale}
+                          </span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {themeToggle}
@@ -268,18 +319,18 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                 type="button"
                 onClick={() => setIsSidebarCollapsed(true)}
                 title={dict.workspace.collapseSidebar}
-                className="hidden rounded-lg border border-slate-800 bg-slate-950 p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-50 lg:inline-flex"
+                className="hidden h-7 w-7 items-center justify-center rounded-lg border border-slate-800 bg-slate-950 text-slate-400 hover:bg-slate-800 hover:text-slate-50 lg:inline-flex"
               >
-                <PanelLeftClose className="h-4 w-4" />
+                <PanelLeftClose className="h-3.5 w-3.5" />
               </button>
             </div>
           </div>
 
           {/* Recording Sessions & Disk File Manager */}
-          <div className="flex-1 space-y-4 overflow-y-auto p-3">
+          <div className="flex-1 space-y-3 overflow-y-auto p-2.5">
             {/* Section 1: Meeting Recordings List */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between px-1 py-1">
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between px-1 py-0.5">
                 <span className="text-[11px] font-bold tracking-wider text-slate-300 uppercase">
                   {dict.workspace.recordingsHeading.replace(
                     "{count}",
@@ -291,7 +342,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                   <button
                     type="button"
                     onClick={handleClearAllRecordings}
-                    className="inline-flex items-center gap-1 rounded-lg border border-rose-500/40 bg-rose-500/15 px-2 py-1 text-[11px] font-semibold text-rose-300 transition hover:bg-rose-600 hover:text-white"
+                    className="inline-flex items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/15 px-2 py-0.5 text-[11px] font-medium text-rose-300 transition hover:bg-rose-600 hover:text-white"
                   >
                     <Trash2 className="h-3 w-3" />
                     {dict.workspace.clearAll}
@@ -300,12 +351,12 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
               </div>
 
               {meetings.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-slate-800 bg-slate-950/50 p-4 text-center">
-                  <Mic className="mx-auto mb-2 h-6 w-6 text-slate-500" />
+                <div className="rounded-lg border border-dashed border-slate-800 bg-slate-950/50 p-3 text-center">
+                  <Mic className="mx-auto mb-1.5 h-5 w-5 text-slate-500" />
                   <p className="text-xs font-medium text-slate-300">
                     {dict.workspace.emptyListTitle}
                   </p>
-                  <p className="mt-1 text-[11px] text-slate-400">
+                  <p className="mt-0.5 text-[11px] text-slate-400">
                     {dict.workspace.emptyListHint}
                   </p>
                 </div>
@@ -315,7 +366,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                   return (
                     <div
                       key={mtg.id}
-                      className={`group relative rounded-xl border p-3 transition ${
+                      className={`group relative rounded-lg border p-2.5 transition ${
                         isSelected
                           ? "border-orange-500/60 bg-orange-950/40 shadow-sm"
                           : "border-slate-800/70 bg-slate-950/40 hover:border-slate-700 hover:bg-slate-900"
@@ -330,7 +381,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                           <h2 className="line-clamp-2 text-xs font-semibold text-slate-50">
                             {mtg.title}
                           </h2>
-                          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
                             <span className="inline-flex items-center gap-1">
                               <Clock className="h-3 w-3" />
                               {mtg.durationSeconds}s
@@ -348,9 +399,9 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                           onClick={() =>
                             handleDeleteSingleRecording(mtg.id, mtg.title)
                           }
-                          className="rounded-lg border border-rose-500/30 bg-rose-500/10 p-1.5 text-rose-300 transition hover:bg-rose-600 hover:text-white"
+                          className="rounded-md border border-rose-500/30 bg-rose-500/10 p-1 text-rose-300 transition hover:bg-rose-600 hover:text-white"
                         >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <Trash2 className="h-3 w-3" />
                         </button>
                       </div>
                     </div>
@@ -360,8 +411,8 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
             </div>
 
             {/* Section 2: Physical Audio Files Manager (/recordings/*.wav) */}
-            <div className="border-t border-slate-800/80 pt-3">
-              <div className="flex items-center justify-between px-1 pb-2">
+            <div className="border-t border-slate-800/80 pt-2.5">
+              <div className="flex items-center justify-between px-1 pb-1.5">
                 <span className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-slate-300 uppercase">
                   <FolderOpen className="h-3.5 w-3.5 text-amber-400" />
                   {dict.workspace.savedFilesHeading.replace(
@@ -380,7 +431,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
               </div>
 
               {recordingsDir && (
-                <p className="mb-2 break-all rounded-lg bg-slate-950 px-2.5 py-1.5 font-mono text-[10px] text-slate-400">
+                <p className="mb-1.5 break-all rounded-md bg-slate-950 px-2 py-1 font-mono text-[10px] text-slate-400">
                   📂 {recordingsDir}
                 </p>
               )}
@@ -390,11 +441,11 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                   {dict.workspace.noSavedFiles}
                 </p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {diskFiles.map((file) => (
                     <div
                       key={file.fileName}
-                      className="rounded-xl border border-slate-800 bg-slate-950/70 p-2.5 text-xs"
+                      className="rounded-lg border border-slate-800 bg-slate-950/70 p-2 text-xs"
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="inline-flex items-center gap-1.5 truncate font-semibold text-slate-200">
@@ -414,7 +465,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                             title={dict.workspace.deleteFileTitle}
                             className="rounded-md bg-rose-500/15 p-1 text-rose-300 hover:bg-rose-600 hover:text-white"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Trash2 className="h-3 w-3" />
                           </button>
                         </div>
                       </div>
@@ -431,7 +482,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                       <audio
                         controls
                         src={convertFileSrc(file.wavPath)}
-                        className="mt-2 h-7 w-full rounded"
+                        className="mt-1.5 h-7 w-full rounded"
                       />
                     </div>
                   ))}
@@ -440,16 +491,16 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
             </div>
           </div>
 
-          <UpdateButton locale={locale} className="mr-3 mb-2 self-end" />
+          <UpdateButton locale={locale} className="mr-2.5 mb-1.5 self-end" />
 
           {/* Bottom Sidebar Actions */}
-          <div className="grid grid-cols-2 gap-2 border-t border-slate-800 p-3">
+          <div className="grid grid-cols-2 gap-1.5 border-t border-slate-800 px-2.5 py-2">
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs font-medium text-slate-200 hover:bg-slate-700"
+              className="inline-flex h-7 items-center justify-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 text-[11px] font-medium whitespace-nowrap text-slate-200 transition hover:bg-slate-700"
             >
-              <Settings className="h-3.5 w-3.5 text-orange-400" />
+              <Settings className="h-3 w-3 shrink-0 text-orange-400" />
               {dict.nav.settings}
             </button>
 
@@ -457,9 +508,9 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
               type="button"
               disabled={!activeMeeting}
               onClick={() => setModalMode("export")}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-orange-500/40 bg-orange-500/15 px-3 py-2 text-xs font-semibold text-orange-200 hover:bg-orange-600 hover:text-white disabled:opacity-40"
+              className="inline-flex h-7 items-center justify-center gap-1.5 rounded-lg border border-orange-500/40 bg-orange-500/15 px-2.5 text-[11px] font-medium whitespace-nowrap text-orange-200 transition hover:bg-orange-600 hover:text-white disabled:opacity-40"
             >
-              <Share2 className="h-3.5 w-3.5" />
+              <Share2 className="h-3 w-3 shrink-0" />
               {dict.nav.exportShare}
             </button>
           </div>
@@ -467,13 +518,13 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
       )}
 
       {isSidebarCollapsed && (
-        <aside className="flex shrink-0 items-center gap-2 border-b border-slate-800/90 bg-slate-900/90 px-3 py-2 lg:w-16 lg:flex-col lg:border-r lg:border-b-0 lg:px-0 lg:py-3.5">
+        <aside className="flex shrink-0 items-center gap-2 border-b border-slate-800/90 bg-slate-900/90 px-3 py-2 lg:w-14 lg:flex-col lg:border-r lg:border-b-0 lg:px-0 lg:py-3">
           <Image
             src="/logo-mark.png"
             alt=""
-            width={36}
-            height={36}
-            className="h-9 w-9 rounded-xl shadow-md shadow-orange-600/20"
+            width={32}
+            height={32}
+            className="h-8 w-8 rounded-lg shadow-sm shadow-orange-600/20"
           />
 
           <button
@@ -508,12 +559,12 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
       )}
 
       {/* Main Content Area (Scrollable so resized panels never get cut off) */}
-      <main className="flex flex-1 flex-col gap-4 overflow-y-auto p-4">
+      <main className="flex flex-1 flex-col gap-3 overflow-y-auto p-3.5">
         {/* Toast Banner */}
         {toastMessage && (
           <div
             role="status"
-            className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-950/80 px-4 py-2 text-xs font-medium text-emerald-200 shadow-lg"
+            className="flex items-center gap-2 rounded-lg border border-emerald-500/40 bg-emerald-950/80 px-3.5 py-2 text-xs font-medium text-emerald-200 shadow-lg"
           >
             <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
             <span>{toastMessage}</span>
@@ -540,13 +591,13 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
         {/* Active Meeting View OR Clean Empty State */}
         {activeMeeting ? (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800/90 bg-slate-900/60 px-4 py-2.5">
-              <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-slate-800/90 bg-slate-900/60 px-3.5 py-2">
+              <div className="flex flex-wrap items-center gap-3">
                 <div>
-                  <h2 className="text-base font-bold text-slate-50">
+                  <h2 className="text-sm font-bold text-slate-50">
                     {activeMeeting.title}
                   </h2>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-[11px] text-slate-400">
                     🎧 {activeMeeting.audioDeviceUsed} • 👥{" "}
                     {activeMeeting.participants.join(", ")}
                   </p>
@@ -556,24 +607,24 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                   <audio
                     controls
                     src={activeMeeting.audioDataUrl}
-                    className="h-8 max-w-[260px] rounded-lg"
+                    className="h-7 max-w-[240px] rounded-lg"
                   />
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {/* Quick Resize Presets for Main Panels */}
-                <div className="hidden items-center gap-1 rounded-xl border border-slate-800 bg-slate-950 p-1 text-[11px] lg:flex">
+                <div className="hidden items-center gap-0.5 rounded-lg border border-slate-800 bg-slate-950 p-0.5 text-[11px] lg:flex">
                   <button
                     type="button"
                     onClick={() => {
                       setMainSplitRatio(50);
                       setMainPaneHeight(540);
                     }}
-                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-medium text-slate-300 hover:bg-slate-800 hover:text-slate-50"
+                    className="inline-flex h-6 items-center gap-1 rounded-md px-2 font-medium text-slate-300 hover:bg-slate-800 hover:text-slate-50"
                   >
                     <Minimize2 className="h-3 w-3" />
-                    50 / 50
+                    50/50
                   </button>
                   <button
                     type="button"
@@ -581,7 +632,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                       setMainSplitRatio(65);
                       setMainPaneHeight(760);
                     }}
-                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-medium text-orange-300 hover:bg-orange-600 hover:text-white"
+                    className="inline-flex h-6 items-center gap-1 rounded-md px-2 font-medium text-orange-300 hover:bg-orange-600 hover:text-white"
                   >
                     <Maximize2 className="h-3 w-3" />
                     {dict.workspace.wideTranscript}
@@ -592,7 +643,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                       setMainSplitRatio(35);
                       setMainPaneHeight(760);
                     }}
-                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 font-medium text-emerald-300 hover:bg-emerald-600 hover:text-white"
+                    className="inline-flex h-6 items-center gap-1 rounded-md px-2 font-medium text-emerald-300 hover:bg-emerald-600 hover:text-white"
                   >
                     <Maximize2 className="h-3 w-3" />
                     {dict.workspace.wideSummary}
@@ -607,41 +658,38 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                       activeMeeting.title
                     )
                   }
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-200 hover:bg-rose-600 hover:text-white"
+                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-rose-500/40 bg-rose-500/15 px-2.5 text-[11px] font-medium text-rose-200 transition hover:bg-rose-600 hover:text-white"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 className="h-3 w-3" />
                   {dict.workspace.deleteActiveRecording}
                 </button>
 
                 {/* Right Panel Tab Switcher */}
-                <div className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-950 p-1">
+                <div className="flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 p-0.5">
                   <button
                     type="button"
                     onClick={() => setRightTab("summary")}
-                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    className={`inline-flex h-6 items-center gap-1 rounded-md px-2.5 text-[11px] font-semibold transition ${
                       rightTab === "summary"
                         ? "bg-orange-600 text-white"
                         : "text-slate-400 hover:text-slate-50"
                     }`}
                   >
-                    <FileText className="h-3.5 w-3.5" />
+                    <FileText className="h-3 w-3" />
                     {dict.tabs.summary}
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setRightTab("askFred")}
-                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                    className={`inline-flex h-6 items-center gap-1 rounded-md px-2.5 text-[11px] font-semibold transition ${
                       rightTab === "askFred"
                         ? "bg-orange-600 text-white"
                         : "text-slate-400 hover:text-slate-50"
                     }`}
                   >
-                    <Bot className="h-3.5 w-3.5" />
+                    <Bot className="h-3 w-3" />
                     {dict.tabs.askFred}
-                    <span className="rounded-full bg-orange-500/30 px-1.5 py-0.2 text-[10px]">
-                      AI
-                    </span>
                   </button>
                 </div>
               </div>
