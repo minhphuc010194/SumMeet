@@ -16,7 +16,7 @@ The Windows installer is not Authenticode-signed, so SmartScreen may warn on fir
 
 On first run, SumMeet asks for an [OpenRouter](https://openrouter.ai/keys) API key. It powers transcription, summaries, and chat.
 
-On macOS, the red close button only hides the window: SumMeet keeps running (an active recording continues) and you quit with **Cmd+Q**.
+Closing the window on macOS or Windows only hides it: SumMeet keeps running (an active recording continues) with an icon in the menu bar or system tray. Open the icon's menu (click it on macOS, right-click it on Windows, where a left-click reopens the window) and choose **Open SumMeet** or **Quit SumMeet**; macOS also quits with **Cmd+Q**. Turn on **Open SumMeet at login** in AI settings to start SumMeet in the background when you sign in. Launching SumMeet again reopens the running window instead of starting a second copy.
 
 ## Recording
 

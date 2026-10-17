@@ -7,6 +7,10 @@ import { OpenRouterKeyForm } from "@/components/onboarding/OpenRouterKeyForm";
 import { UpdateSettingsSection } from "@/components/update/UpdateEntryPoints";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { DEFAULT_OPENROUTER_MODEL } from "@/services/ai/provider-registry";
+import {
+  getAutostartEnabled,
+  setAutostartEnabled,
+} from "@/services/autostart";
 import type { AIProviderSettings } from "@/types/meeting";
 import { useMeetingStore } from "@/store/meeting-store";
 
@@ -35,14 +39,29 @@ export function AIProviderSettingsModal({
 }: AIProviderSettingsModalProps) {
   const { settings, updateSettings, removeOpenRouterKey } = useMeetingStore();
   const [formState, setFormState] = useState<EditableSettings>(settings);
+  const [osAutostart, setOsAutostart] = useState(false);
+  const [autostartChoice, setAutostartChoice] = useState<boolean | null>(null);
+  const autostart = autostartChoice ?? osAutostart;
 
   useEffect(() => {
     if (isOpen) {
       setFormState(settings);
+      setAutostartChoice(null);
     }
   }, [settings, isOpen]);
 
-  const handleSave = (event: React.FormEvent) => {
+  useEffect(() => {
+    if (!isOpen) return;
+    void getAutostartEnabled().then((result) => {
+      if (!result.success) {
+        onToast(dict.settings.autostartReadError);
+        return;
+      }
+      setOsAutostart(result.data ?? false);
+    });
+  }, [isOpen, onToast, dict.settings.autostartReadError]);
+
+  const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
     updateSettings({
       openRouterModel:
@@ -50,7 +69,15 @@ export function AIProviderSettingsModal({
       transcriptionLanguage: formState.transcriptionLanguage,
       callDetectionEnabled: formState.callDetectionEnabled,
     });
-    onToast(dict.settings.savedToast);
+    const autostartResult =
+      autostart === osAutostart
+        ? { success: true }
+        : await setAutostartEnabled(autostart);
+    onToast(
+      autostartResult.success
+        ? dict.settings.savedToast
+        : dict.settings.autostartSaveError
+    );
     onClose();
   };
 
@@ -157,6 +184,25 @@ export function AIProviderSettingsModal({
             </label>
             <p className="mt-1 pl-6 text-[11px] text-slate-500">
               {dict.settings.callDetectionHint}
+            </p>
+          </div>
+
+          <div className="flex flex-col">
+            <label
+              htmlFor="settings-autostart"
+              className="flex items-center gap-2 text-xs font-medium text-slate-300"
+            >
+              <input
+                id="settings-autostart"
+                type="checkbox"
+                checked={autostart}
+                onChange={(e) => setAutostartChoice(e.target.checked)}
+                className="h-4 w-4 accent-orange-500"
+              />
+              {dict.settings.autostartLabel}
+            </label>
+            <p className="mt-1 pl-6 text-[11px] text-slate-500">
+              {dict.settings.autostartHint}
             </p>
           </div>
 

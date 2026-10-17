@@ -5,7 +5,10 @@ mod mic;
 mod mic_activity;
 mod recordings;
 
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
+use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_notification::NotificationExt;
 
 use audio::audio_engine::{
     compute_dual_stream_routing, list_system_audio_devices, system_audio_supported,
@@ -52,13 +55,15 @@ fn list_audio_devices() -> Result<serde_json::Value, String> {
     }))
 }
 
-#[cfg(target_os = "macos")]
 fn show_main_window(app: &tauri::AppHandle) {
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
     if let Err(error) = window.show() {
         eprintln!("[Window] Show failed: {error}");
+    }
+    if let Err(error) = window.unminimize() {
+        eprintln!("[Window] Unminimize failed: {error}");
     }
     if let Err(error) = window.set_focus() {
         eprintln!("[Window] Focus failed: {error}");
@@ -67,6 +72,13 @@ fn show_main_window(app: &tauri::AppHandle) {
 
 pub fn run() {
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
@@ -76,6 +88,38 @@ pub fn run() {
             std::fs::create_dir_all(&recordings_dir)?;
             app.manage(recordings::RecordingsDir(recordings_dir));
             mic_activity::spawn_watcher(app.handle().clone());
+
+            let click_opens_window = !cfg!(target_os = "macos");
+            let mut tray = TrayIconBuilder::with_id("main")
+                .tooltip(&app.package_info().name)
+                .show_menu_on_left_click(!click_opens_window)
+                .on_tray_icon_event(move |tray, event| {
+                    if !click_opens_window {
+                        return;
+                    }
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main_window(tray.app_handle());
+                    }
+                });
+            if let Some(icon) = app.default_window_icon() {
+                tray = tray.icon(icon.clone());
+            }
+            if let Err(error) = tray.build(app) {
+                eprintln!("[Tray] Build failed: {error}");
+            }
+
+            let handle = app.handle().clone();
+            app.notification()
+                .on_action(move |_| show_main_window(&handle))?;
+
+            if !std::env::args().any(|arg| arg == "--autostart") {
+                show_main_window(app.handle());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -92,7 +136,6 @@ pub fn run() {
             recordings::delete_all_recordings,
         ]);
 
-    #[cfg(target_os = "macos")]
     let builder = builder
         .on_window_event(|window, event| {
             if window.label() != "main" {
@@ -106,8 +149,10 @@ pub fn run() {
             }
         })
         .on_menu_event(|app, event| {
-            if event.id() == "check-for-updates" {
+            if event.id() == "check-for-updates" || event.id() == "show-main-window" {
                 show_main_window(app);
+            } else if event.id() == "quit" {
+                app.exit(0);
             }
         });
 

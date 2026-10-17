@@ -205,6 +205,10 @@ export interface Dictionary {
     keySavedToast: string;
     callDetectionLabel: string;
     callDetectionHint: string;
+    autostartLabel: string;
+    autostartHint: string;
+    autostartReadError: string;
+    autostartSaveError: string;
     saveButton: string;
     savedToast: string;
     closeButton: string;
@@ -254,6 +258,10 @@ export interface Dictionary {
     checkFailed: string;
     tryAgain: string;
     menuCheckForUpdates: string;
+  };
+  tray: {
+    openLabel: string;
+    quitLabel: string;
   };
 }
 
@@ -468,6 +476,10 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       keySavedToast: "Đã xác thực và lưu khóa OpenRouter mới!",
       callDetectionLabel: "Gợi ý ghi âm khi phát hiện cuộc gọi",
       callDetectionHint: "SumMeet chỉ kiểm tra xem ứng dụng khác có đang dùng micro hay không, không đọc âm thanh.",
+      autostartLabel: "Mở SumMeet khi đăng nhập",
+      autostartHint: "SumMeet chạy nền trên thanh menu hoặc khay hệ thống và không mở cửa sổ khi khởi động.",
+      autostartReadError: "Không thể đọc cài đặt mở SumMeet khi đăng nhập.",
+      autostartSaveError: "Đã lưu cấu hình, nhưng không thể thay đổi cài đặt mở SumMeet khi đăng nhập.",
       saveButton: "Lưu cấu hình",
       savedToast: "Đã lưu cấu hình AI & Audio thành công!",
       closeButton: "Đóng",
@@ -517,6 +529,10 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       checkFailed: "Không thể kiểm tra cập nhật. Vui lòng thử lại sau.",
       tryAgain: "Thử lại",
       menuCheckForUpdates: "Kiểm tra cập nhật…",
+    },
+    tray: {
+      openLabel: "Mở SumMeet",
+      quitLabel: "Thoát SumMeet",
     },
   },
   en: {
@@ -729,6 +745,10 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       keySavedToast: "New OpenRouter key validated and saved!",
       callDetectionLabel: "Suggest recording when a call is detected",
       callDetectionHint: "SumMeet only checks whether another app is using the microphone. It never reads the audio.",
+      autostartLabel: "Open SumMeet at login",
+      autostartHint: "SumMeet runs in the background in the menu bar or system tray and does not open its window at startup.",
+      autostartReadError: "Could not read the open-at-login setting.",
+      autostartSaveError: "Configuration saved, but the open-at-login setting could not be changed.",
       saveButton: "Save Configuration",
       savedToast: "AI & Audio configuration saved!",
       closeButton: "Close",
@@ -778,6 +798,10 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       checkFailed: "Could not check for updates. Please try again later.",
       tryAgain: "Try again",
       menuCheckForUpdates: "Check for Updates…",
+    },
+    tray: {
+      openLabel: "Open SumMeet",
+      quitLabel: "Quit SumMeet",
     },
   },
 };

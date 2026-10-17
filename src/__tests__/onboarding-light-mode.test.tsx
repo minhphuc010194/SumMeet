@@ -10,6 +10,7 @@ vi.mock("@/services/ai/openrouter-key", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/ai/openrouter-key")>()),
   getStoredOpenRouterKey: vi.fn(),
 }));
+vi.mock("@/services/tray", () => ({ setupTrayMenu: vi.fn() }));
 
 const SOLID_FILL = /\bbg-(orange|rose|emerald)-[56]00\b/;
 
