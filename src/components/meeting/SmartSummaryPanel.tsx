@@ -19,6 +19,7 @@ import type {
   SupportedLocale,
 } from "@/types/meeting";
 import { generateSummaryWithFallback } from "@/services/ai/provider-registry";
+import { transcribeRecordingTail } from "@/services/audio/recording-transcription";
 import { formatTimestampMmSs } from "@/services/export/export-service";
 import { useMeetingStore } from "@/store/meeting-store";
 
@@ -38,6 +39,7 @@ export function SmartSummaryPanel({
   const {
     settings,
     openRouterKey,
+    appendTranscriptSegment,
     toggleActionItem,
     updateMeetingSummary,
     setCurrentAudioTimeMs,
@@ -53,13 +55,43 @@ export function SmartSummaryPanel({
     setIsRegenerating(true);
 
     try {
+      let segments = meeting.segments;
+      if (segments.length === 0) {
+        const tail = await transcribeRecordingTail({
+          meetingId: meeting.id,
+          startSec: 0,
+          maxSliceSec: 30,
+          apiKey: openRouterKey,
+          model: settings.openRouterModel,
+          locale,
+          transcriptionLanguage: settings.transcriptionLanguage,
+          onSegments: (newSegments) =>
+            newSegments.forEach((seg) =>
+              appendTranscriptSegment(meeting.id, seg)
+            ),
+        });
+        segments =
+          useMeetingStore
+            .getState()
+            .meetings.find((m) => m.id === meeting.id)?.segments ?? [];
+        if (!tail.success && segments.length === 0) {
+          const errorMessage = tail.error ?? dict.errors.transcriptionFailed;
+          updateMeetingSummary(meeting.id, {
+            ...meeting.summary,
+            overview: errorMessage,
+          });
+          onToast(errorMessage);
+          return;
+        }
+      }
+
       const result = await generateSummaryWithFallback({
         apiKey: openRouterKey,
         model: settings.openRouterModel,
         meetingId: meeting.id,
         meetingTitle: meeting.title,
         templateId: targetTemplate,
-        segments: meeting.segments,
+        segments,
         locale,
       });
 
@@ -80,6 +112,13 @@ export function SmartSummaryPanel({
   };
 
   const { summary } = meeting;
+  const isStaleLiveOverview =
+    meeting.status === "completed" &&
+    meeting.segments.length === 0 &&
+    summary.overview === dict.session.liveOverview;
+  const overviewText = isStaleLiveOverview
+    ? dict.errors.noTranscript
+    : summary.overview;
 
   return (
     <div className="flex h-full flex-col space-y-4 overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
@@ -136,7 +175,7 @@ export function SmartSummaryPanel({
           {dict.summary.overviewTitle}
         </h3>
         <p className="mt-2 text-sm leading-relaxed text-slate-200">
-          {summary.overview}
+          {overviewText}
         </p>
       </div>
 

@@ -78,6 +78,18 @@ describe("Meeting session defaults", () => {
 
     expect(meeting.participants).toEqual(["Ann", "Bob"]);
   });
+
+  it("preserves explicit id and createdAt when restoring a disk recording", () => {
+    const meeting = useMeetingStore.getState().createMeetingSession({
+      ...SESSION_PARAMS,
+      id: "mtg-1792242085270",
+      createdAt: "2026-10-17T13:01:25.270Z",
+      locale: "en",
+    });
+
+    expect(meeting.id).toBe("mtg-1792242085270");
+    expect(meeting.createdAt).toBe("2026-10-17T13:01:25.270Z");
+  });
 });
 
 describe("Live transcription offset", () => {

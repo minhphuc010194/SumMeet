@@ -17,6 +17,7 @@ import {
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification";
+import { SmartSummaryPanel } from "@/components/meeting/SmartSummaryPanel";
 import { RecordingControlBar } from "@/components/recorder/RecordingControlBar";
 import { getDictionary } from "@/i18n/dictionaries";
 import { generateSummaryWithFallback } from "@/services/ai/provider-registry";
@@ -1497,4 +1498,145 @@ describe("Recording system audio", () => {
 
     expect(silentHintToasts(onToast)).toHaveLength(0);
   });
+
+  it("replaces the live overview placeholder when a recording completes with no transcript", async () => {
+    useFakeClock();
+    summaryMock.mockResolvedValueOnce({
+      success: false,
+      error: dict.errors.noTranscript,
+    });
+    const { startButton, onToast } = await renderBar();
+    await startRecording(startButton);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dict.recorder.stopRecording })
+    );
+    await advance(0);
+
+    const saved = useMeetingStore.getState().meetings[0];
+    expect(saved.status).toBe("completed");
+    expect(saved.summary.overview).toBe(dict.errors.noTranscript);
+    expect(onToast).toHaveBeenCalledWith(dict.errors.noTranscript);
+  });
 });
+
+describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    useMeetingStore.setState({
+      meetings: [],
+      selectedMeetingId: "",
+      openRouterKey: "sk-or-test",
+    });
+  });
+
+  it("displays noTranscript instead of a stale live overview on a completed meeting with 0 segments", () => {
+    const meeting = useMeetingStore.getState().createMeetingSession({
+      title: "Empty Meeting",
+      audioDeviceUsed: "Mic",
+      isHeadphoneSession: false,
+      locale: "en",
+    });
+    useMeetingStore.getState().completeMeetingRecording(meeting.id, 120);
+    const completed = useMeetingStore.getState().meetings[0];
+
+    render(
+      <SmartSummaryPanel
+        meeting={completed}
+        dict={dictEn}
+        locale="en"
+        onToast={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText(dictEn.errors.noTranscript)).toBeTruthy();
+    expect(screen.queryByText(dictEn.session.liveOverview)).toBeNull();
+  });
+
+  it("transcribes the saved recording from disk and generates a summary when Regenerate is clicked on a 0-segment meeting", async () => {
+    const meeting = useMeetingStore.getState().createMeetingSession({
+      title: "Recovered Meeting",
+      audioDeviceUsed: "Mic",
+      isHeadphoneSession: false,
+      locale: "en",
+    });
+    useMeetingStore.getState().completeMeetingRecording(meeting.id, 120);
+    const completed = useMeetingStore.getState().meetings[0];
+
+    tailMock.mockImplementation(async ({ meetingId, onSegments }) => {
+      onSegments([segmentFor(meetingId)]);
+      return { success: true };
+    });
+    summaryMock.mockResolvedValue({
+      success: true,
+      data: summaryFor(meeting.id),
+    });
+
+    const onToast = vi.fn();
+    render(
+      <SmartSummaryPanel
+        meeting={completed}
+        dict={dictEn}
+        locale="en"
+        onToast={onToast}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dictEn.summary.regenerateButton })
+    );
+
+    await waitFor(() => expect(summaryMock).toHaveBeenCalledTimes(1));
+    expect(tailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        meetingId: meeting.id,
+        startSec: 0,
+        apiKey: "sk-or-test",
+        locale: "en",
+      })
+    );
+    expect(summaryMock.mock.calls[0][0].segments).toEqual([
+      segmentFor(meeting.id),
+    ]);
+    const updated = useMeetingStore.getState().meetings[0];
+    expect(updated.segments).toEqual([segmentFor(meeting.id)]);
+    expect(updated.summary.overview).toBe("Tóm tắt");
+  });
+
+  it("shows the transcription error and skips summary generation when re-transcribing from disk fails", async () => {
+    const meeting = useMeetingStore.getState().createMeetingSession({
+      title: "Failed Recovery",
+      audioDeviceUsed: "Mic",
+      isHeadphoneSession: false,
+      locale: "en",
+    });
+    useMeetingStore.getState().completeMeetingRecording(meeting.id, 120);
+    const completed = useMeetingStore.getState().meetings[0];
+
+    tailMock.mockResolvedValue({
+      success: false,
+      error: dictEn.errors.transcriptionFailed,
+    });
+
+    const onToast = vi.fn();
+    render(
+      <SmartSummaryPanel
+        meeting={completed}
+        dict={dictEn}
+        locale="en"
+        onToast={onToast}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dictEn.summary.regenerateButton })
+    );
+
+    await waitFor(() =>
+      expect(onToast).toHaveBeenCalledWith(dictEn.errors.transcriptionFailed)
+    );
+    expect(summaryMock).not.toHaveBeenCalled();
+  });
+});
+

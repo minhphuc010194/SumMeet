@@ -96,8 +96,8 @@ export function AIProviderSettingsModal({
       subtitle={dict.settings.subtitle}
     >
       <div className="space-y-3.5">
-        <section className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-3.5">
-          <h3 className="mb-2.5 border-b border-emerald-500/20 pb-2 text-xs font-bold text-emerald-300">
+        <section className="rounded-xl border border-slate-800 bg-slate-950/40 p-3.5">
+          <h3 className="mb-2.5 border-b border-slate-800 pb-2 text-xs font-bold text-slate-200">
             {dict.settings.keyTitle}
           </h3>
           <OpenRouterKeyForm
@@ -216,7 +216,7 @@ export function AIProviderSettingsModal({
             </button>
             <button
               type="submit"
-              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-orange-600 px-4 text-xs font-semibold text-white shadow-sm shadow-orange-600/20 transition hover:bg-orange-500"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-orange-500/40 bg-orange-500/15 px-4 text-xs font-semibold text-orange-200 transition hover:bg-orange-500/25"
             >
               <Save className="h-3.5 w-3.5" />
               {dict.settings.saveButton}

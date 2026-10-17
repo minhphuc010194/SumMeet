@@ -203,6 +203,8 @@ export interface Dictionary {
     keyTitle: string;
     keyChangeLabel: string;
     keyChangeButton: string;
+    keyCheckButton: string;
+    keyValidStatus: string;
     keyRemoveButton: string;
     keySavedToast: string;
     callDetectionLabel: string;
@@ -477,6 +479,8 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       keyTitle: "Khóa API OpenRouter",
       keyChangeLabel: "Khóa API mới:",
       keyChangeButton: "Lưu khóa",
+      keyCheckButton: "Kiểm tra khóa",
+      keyValidStatus: "Khóa API đang hoạt động tốt.",
       keyRemoveButton: "Xóa khóa",
       keySavedToast: "Đã lưu khóa OpenRouter mới!",
       callDetectionLabel: "Gợi ý ghi âm khi phát hiện cuộc gọi",
@@ -749,6 +753,8 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       keyTitle: "OpenRouter API key",
       keyChangeLabel: "New API key:",
       keyChangeButton: "Save Key",
+      keyCheckButton: "Check Key",
+      keyValidStatus: "API key is active and working.",
       keyRemoveButton: "Remove Key",
       keySavedToast: "Saved new OpenRouter key!",
       callDetectionLabel: "Suggest recording when a call is detected",

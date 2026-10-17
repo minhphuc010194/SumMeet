@@ -154,11 +154,41 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
 
   const refreshDiskFiles = useCallback(async () => {
     const listing = await listRecordings(locale);
-    if (listing.success && listing.data) {
-      setDiskFiles(listing.data.files);
-      setRecordingsDir(listing.data.recordingsDir);
+    if (!listing.success || !listing.data) return;
+    setDiskFiles(listing.data.files);
+    setRecordingsDir(listing.data.recordingsDir);
+
+    const {
+      meetings: currentMeetings,
+      createMeetingSession,
+      completeMeetingRecording,
+    } = useMeetingStore.getState();
+    const knownIds = new Set(currentMeetings.map((m) => m.id));
+    for (const file of [...listing.data.files].reverse()) {
+      if (knownIds.has(file.meetingId)) continue;
+      const timeLabel = new Date(file.createdAtMs).toLocaleTimeString(
+        locale === "vi" ? "vi-VN" : "en-US",
+        { hour: "2-digit", minute: "2-digit", second: "2-digit" }
+      );
+      createMeetingSession({
+        id: file.meetingId,
+        createdAt: new Date(file.createdAtMs).toISOString(),
+        title: dict.recorder.sessionTitle.replace("{time}", timeLabel),
+        audioDeviceUsed: dict.recorder.uploadedFileSource.replace(
+          "{name}",
+          file.fileName
+        ),
+        isHeadphoneSession: false,
+        locale,
+      });
+      completeMeetingRecording(
+        file.meetingId,
+        Math.max(1, Math.round(file.durationSec)),
+        undefined,
+        convertFileSrc(file.wavPath)
+      );
     }
-  }, [locale]);
+  }, [dict.recorder.sessionTitle, dict.recorder.uploadedFileSource, locale]);
 
   useEffect(() => {
     void refreshDiskFiles();
