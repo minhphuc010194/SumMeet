@@ -443,16 +443,27 @@ export function RecordingControlBar({
       locale,
     });
 
+    const fallbackOverview = summary.error ?? dict.errors.noTranscript;
+    const completedSummary =
+      summary.data ??
+      (meeting.summary.overview === dict.session.liveOverview
+        ? {
+            ...meeting.summary,
+            overview: fallbackOverview,
+            updatedAt: new Date().toISOString(),
+          }
+        : undefined);
+
     completeMeetingRecording(
       meeting.id,
       params.durationSec,
-      summary.data,
+      completedSummary,
       params.audioUrl
     );
     onRecordingCompleted?.();
 
     if (!summary.success || !summary.data) {
-      onToast(summary.error ?? dict.errors.noTranscript);
+      onToast(fallbackOverview);
       return;
     }
 

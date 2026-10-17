@@ -18,7 +18,10 @@ import {
   getStoredOpenRouterKey,
   storeOpenRouterKey,
 } from "@/services/ai/openrouter-key";
-import { DEFAULT_OPENROUTER_MODEL } from "@/services/ai/provider-registry";
+import {
+  DEFAULT_OPENROUTER_MODEL,
+  callOpenRouterChat,
+} from "@/services/ai/provider-registry";
 
 const INITIAL_MEETINGS: Meeting[] = [];
 
@@ -66,6 +69,8 @@ interface MeetingStoreState {
   setIncludeSystemAudio: (include: boolean) => void;
   markCallDetectionAnnounced: () => void;
   createMeetingSession: (params: {
+    id?: string;
+    createdAt?: string;
     title: string;
     audioDeviceUsed: string;
     isHeadphoneSession: boolean;
@@ -93,13 +98,17 @@ interface MeetingStoreState {
     key: string;
     locale: SupportedLocale;
   }) => Promise<ApiResponse<null>>;
+  verifyOpenRouterKey: (params: {
+    key?: string;
+    locale: SupportedLocale;
+  }) => Promise<ApiResponse<null>>;
   removeOpenRouterKey: (locale: SupportedLocale) => Promise<ApiResponse<null>>;
   addCalendarEvent: (event: CalendarMeetingEvent) => void;
 }
 
 export const useMeetingStore = create<MeetingStoreState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       meetings: INITIAL_MEETINGS,
       selectedMeetingId: "",
       calendarEvents: INITIAL_CALENDAR_EVENTS,
@@ -130,6 +139,8 @@ export const useMeetingStore = create<MeetingStoreState>()(
       markCallDetectionAnnounced: () => set({ hasAnnouncedCallDetection: true }),
 
       createMeetingSession: ({
+        id: customId,
+        createdAt: customCreatedAt,
         title,
         audioDeviceUsed,
         isHeadphoneSession,
@@ -138,8 +149,8 @@ export const useMeetingStore = create<MeetingStoreState>()(
         calendarEventId,
       }) => {
         const dict = getDictionary(locale);
-        const id = `mtg-${Date.now()}`;
-        const now = new Date().toISOString();
+        const id = customId ?? `mtg-${Date.now()}`;
+        const now = customCreatedAt ?? new Date().toISOString();
         const newMeeting: Meeting = {
           id,
           title,
@@ -344,6 +355,46 @@ export const useMeetingStore = create<MeetingStoreState>()(
 
         set({ openRouterKey: apiKey, openRouterKeyStatus: "ready" });
         return { success: true };
+      },
+
+      verifyOpenRouterKey: async ({ key, locale }) => {
+        const errors = getDictionary(locale).errors;
+        const apiKey = key?.trim() || get().openRouterKey.trim();
+        if (!apiKey) {
+          return { success: false, error: errors.emptyKey };
+        }
+        const checked = await checkOpenRouterKey({ apiKey, locale });
+        if (!checked.success) return checked;
+
+        try {
+          await callOpenRouterChat({
+            apiKey,
+            model: get().settings.openRouterModel,
+            messages: [{ role: "user", content: "ok" }],
+            timeoutMs: 15000,
+            providerName: "OpenRouter-KeyCheck",
+          });
+          return { success: true };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const match = message.match(
+            /^OpenRouter-KeyCheck HTTP (\d+)(?:: (.+))?$/
+          );
+          if (match) {
+            const status = Number(match[1]);
+            const baseError =
+              status === 401 || status === 403
+                ? errors.invalidKey
+                : errors.networkError;
+            return {
+              success: false,
+              error: match[2]
+                ? `${baseError} (HTTP ${status}: ${match[2]})`
+                : baseError,
+            };
+          }
+          return { success: false, error: errors.networkError };
+        }
       },
 
       removeOpenRouterKey: async (locale) => {

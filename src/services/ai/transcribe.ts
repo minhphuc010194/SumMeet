@@ -150,11 +150,23 @@ export async function transcribeAudioChunk(params: {
       },
     };
   } catch (error) {
-    console.error("[TranscribeService] OpenRouter audio transcription failed:", {
-      meetingId,
-      channel: params.channel,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return { success: false, error: errors.transcriptionFailed };
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[TranscribeService] OpenRouter audio transcription failed (${errorMessage}):`,
+      {
+        meetingId,
+        channel: params.channel,
+        error: errorMessage,
+      }
+    );
+    const detailMatch = errorMessage.match(
+      /^OpenRouter-Audio-STT HTTP (\d+): (.+)$/
+    );
+    return {
+      success: false,
+      error: detailMatch
+        ? `${errors.transcriptionFailed} (HTTP ${detailMatch[1]}: ${detailMatch[2]})`
+        : errors.transcriptionFailed,
+    };
   }
 }

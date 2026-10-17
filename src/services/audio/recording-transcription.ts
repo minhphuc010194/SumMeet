@@ -15,6 +15,7 @@ export async function transcribeRecordingSlice(params: {
   meetingId: string;
   startSec: number;
   minSliceSec: number;
+  maxSliceSec?: number;
   track?: RecordingTrack;
   apiKey: string;
   model: string;
@@ -26,7 +27,7 @@ export async function transcribeRecordingSlice(params: {
   const slice = await readRecordingSlice({
     meetingId: params.meetingId,
     startSec: params.startSec,
-    maxSec: MAX_CHUNK_SEC,
+    maxSec: params.maxSliceSec ?? MAX_CHUNK_SEC,
     track: params.track,
     locale: params.locale,
   });
@@ -69,6 +70,7 @@ export async function transcribeRecordingSlice(params: {
 export async function transcribeRecordingTail(params: {
   meetingId: string;
   startSec: number;
+  maxSliceSec?: number;
   track?: RecordingTrack;
   apiKey: string;
   model: string;
@@ -80,11 +82,18 @@ export async function transcribeRecordingTail(params: {
   let startSec = params.startSec;
   let hasMoreAudio = true;
   while (hasMoreAudio) {
-    const tail = await transcribeRecordingSlice({
+    let tail = await transcribeRecordingSlice({
       ...sliceParams,
       startSec,
       minSliceSec: 1,
     });
+    if (!tail.success && params.maxSliceSec !== undefined) {
+      tail = await transcribeRecordingSlice({
+        ...sliceParams,
+        startSec,
+        minSliceSec: 1,
+      });
+    }
     if (!tail.success || !tail.data) {
       return { success: false, error: tail.error };
     }

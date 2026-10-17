@@ -61,13 +61,20 @@ export async function fetchWithRetryAndTimeout(
 
       if (!response.ok) {
         const durationMs = Date.now() - startTime;
-        console.error("[AIProviderRegistry] External service non-OK status:", {
-          serviceName: options.providerName,
-          url: options.url,
-          responseStatus: response.status,
-          durationMs,
-          attempt,
-        });
+        const responseBody = await response
+          .clone()
+          .text()
+          .catch(() => "");
+        console.error(
+          `[AIProviderRegistry] External service non-OK status (${options.providerName} HTTP ${response.status}): ${responseBody.slice(0, 300)}`,
+          {
+            serviceName: options.providerName,
+            url: options.url,
+            responseStatus: response.status,
+            durationMs,
+            attempt,
+          }
+        );
         if (response.status >= 500 || response.status === 429) {
           throw new Error(
             `${options.providerName} HTTP ${response.status}`
@@ -81,13 +88,17 @@ export async function fetchWithRetryAndTimeout(
       if (timeoutId) clearTimeout(timeoutId);
       lastError = error;
       const durationMs = Date.now() - startTime;
-      console.error("[AIProviderRegistry] External service call failed:", {
-        serviceName: options.providerName,
-        url: options.url,
-        durationMs,
-        attempt,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const errorText = error instanceof Error ? error.message : String(error);
+      console.error(
+        `[AIProviderRegistry] External service call failed (${options.providerName}: ${errorText}):`,
+        {
+          serviceName: options.providerName,
+          url: options.url,
+          durationMs,
+          attempt,
+          error: errorText,
+        }
+      );
 
       if (attempt < maxRetries) {
         const backoffMs = 250 * Math.pow(2, attempt);
@@ -146,7 +157,20 @@ export async function callOpenRouterChat(params: {
   });
 
   if (!response.ok) {
-    throw new Error(`${params.providerName} HTTP ${response.status}`);
+    const rawBody = await response.text().catch(() => "");
+    let detail = "";
+    try {
+      const parsed = JSON.parse(rawBody);
+      const message = parsed?.error?.message;
+      if (typeof message === "string" && message.trim().length > 0) {
+        detail = `: ${message.trim()}`;
+      }
+    } catch {
+      if (rawBody.trim().length > 0 && rawBody.trim().length <= 160) {
+        detail = `: ${rawBody.trim()}`;
+      }
+    }
+    throw new Error(`${params.providerName} HTTP ${response.status}${detail}`);
   }
 
   const data = await response.json();

@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AIProviderSettingsModal } from "@/components/settings/AIProviderSettingsModal";
 import { getDictionary } from "@/i18n/dictionaries";
 import { useMeetingStore } from "@/store/meeting-store";
@@ -206,3 +206,131 @@ describe("AI provider settings open-at-login toggle", () => {
     expect(toggle(dict.settings.autostartLabel).checked).toBe(false);
   });
 });
+
+describe("AI provider settings API key check and button styling", () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    localStorage.clear();
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    useMeetingStore.setState({
+      openRouterKey: "sk-or-stored-key",
+      openRouterKeyStatus: "ready",
+    });
+    mocks.getAutostartEnabled
+      .mockReset()
+      .mockResolvedValue({ success: true, data: false });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("checks the typed key when Check Key is clicked and shows active status on 200", async () => {
+    fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+    await renderModal();
+
+    fireEvent.change(screen.getByLabelText(dict.settings.keyChangeLabel), {
+      target: { value: "sk-or-typed-key" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: dict.settings.keyCheckButton })
+    );
+
+    expect(await screen.findByText(dict.settings.keyValidStatus)).toBeTruthy();
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(
+      "Bearer sk-or-typed-key"
+    );
+    expect(useMeetingStore.getState().openRouterKey).toBe("sk-or-stored-key");
+  });
+
+  it("checks the stored key when the input is blank", async () => {
+    fetchMock.mockResolvedValue(new Response("{}", { status: 200 }));
+    await renderModal();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dict.settings.keyCheckButton })
+    );
+
+    expect(await screen.findByText(dict.settings.keyValidStatus)).toBeTruthy();
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(
+      "Bearer sk-or-stored-key"
+    );
+  });
+
+  it("shows an error alert when the checked key is invalid and clears it on edit", async () => {
+    fetchMock.mockResolvedValue(new Response("unauthorized", { status: 401 }));
+    await renderModal();
+
+    const input = screen.getByLabelText(dict.settings.keyChangeLabel);
+    fireEvent.change(input, { target: { value: "sk-or-invalid" } });
+    fireEvent.click(
+      screen.getByRole("button", { name: dict.settings.keyCheckButton })
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(dict.errors.invalidKey);
+
+    fireEvent.change(input, { target: { value: "sk-or-retry" } });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("shows an error alert when GET /key returns 200 but POST /chat/completions rejects the key with 401 User not found", async () => {
+    fetchMock
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ error: { message: "User not found.", code: 401 } }),
+          { status: 401 }
+        )
+      );
+    await renderModal();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dict.settings.keyCheckButton })
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(dict.errors.invalidKey);
+    expect(alert.textContent).toContain("HTTP 401: User not found.");
+  });
+
+  it("reports an empty key error without network calls when neither typed nor stored key exists", async () => {
+    useMeetingStore.setState({
+      openRouterKey: "",
+      openRouterKeyStatus: "missing",
+    });
+    await renderModal();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dict.settings.keyCheckButton })
+    );
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain(dict.errors.emptyKey);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses soft orange styling for Save Key and Check Key buttons while keeping Remove Key rose", async () => {
+    await renderModal();
+
+    const saveKeyBtn = screen.getByRole("button", {
+      name: dict.settings.keyChangeButton,
+    });
+    const checkKeyBtn = screen.getByRole("button", {
+      name: dict.settings.keyCheckButton,
+    });
+    const removeKeyBtn = screen.getByRole("button", {
+      name: dict.settings.keyRemoveButton,
+    });
+
+    expect(saveKeyBtn.className).toContain("bg-orange-500/15");
+    expect(saveKeyBtn.className).not.toContain("bg-orange-600");
+    expect(checkKeyBtn.className).toContain("bg-orange-500/15");
+    expect(removeKeyBtn.className).toContain("text-rose-300");
+  });
+});
+
