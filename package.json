@@ -1,6 +1,6 @@
 {
   "name": "summeet",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": true,
   "description": "SumMeet Desktop - Fireflies.ai alternative built with Tauri v2, Next.js, and Hybrid AI",
   "scripts": {
