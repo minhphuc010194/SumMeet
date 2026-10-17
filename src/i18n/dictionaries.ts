@@ -46,7 +46,9 @@ export interface Dictionary {
     audioSignal: string;
     callDetectedTitle: string;
     callDetectedHint: string;
+    callDetectedAppHint: string;
     callDetectedBody: string;
+    callDetectedAppBody: string;
     callDetectedAction: string;
     callDetectedStart: string;
     callDetectedDismiss: string;
@@ -312,7 +314,9 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       audioSignal: "Tín hiệu âm thanh:",
       callDetectedTitle: "Có vẻ bạn đang trong một cuộc gọi",
       callDetectedHint: "Một ứng dụng khác đang dùng micro. Ghi âm cuộc họp này?",
+      callDetectedAppHint: "{app} đang dùng micro. Ghi âm cuộc họp này?",
       callDetectedBody: "Một ứng dụng khác đang dùng micro. Mở SumMeet để ghi âm cuộc họp này.",
+      callDetectedAppBody: "{app} đang dùng micro. Mở SumMeet để ghi âm cuộc họp này.",
       callDetectedAction: "Ghi âm",
       callDetectedStart: "Bắt đầu ghi âm",
       callDetectedDismiss: "Bỏ qua",
@@ -581,7 +585,9 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       audioSignal: "Audio Signal:",
       callDetectedTitle: "Looks like you're in a call",
       callDetectedHint: "Another app is using your microphone. Record this meeting?",
+      callDetectedAppHint: "{app} is using your microphone. Record this meeting?",
       callDetectedBody: "Another app is using your microphone. Open SumMeet to record this meeting.",
+      callDetectedAppBody: "{app} is using your microphone. Open SumMeet to record this meeting.",
       callDetectedAction: "Record",
       callDetectedStart: "Start recording",
       callDetectedDismiss: "Dismiss",

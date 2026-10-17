@@ -132,6 +132,7 @@ export function RecordingControlBar({
   const [resultBoxHeight, setResultBoxHeight] = useState<number>(420);
   const [resultSplitRatio, setResultSplitRatio] = useState<number>(50);
   const [isCallSuggestionVisible, setIsCallSuggestionVisible] = useState(false);
+  const [detectedCallApp, setDetectedCallApp] = useState<string | null>(null);
   const isCallDetectionEnabled = useMeetingStore(
     (state) => state.settings.callDetectionEnabled
   );
@@ -206,7 +207,10 @@ export function RecordingControlBar({
 
   useEffect(() => {
     canSuggestCallRef.current = canSuggestCall;
-    if (!canSuggestCall) setIsCallSuggestionVisible(false);
+    if (!canSuggestCall) {
+      setIsCallSuggestionVisible(false);
+      setDetectedCallApp(null);
+    }
   }, [canSuggestCall]);
 
   useEffect(() => {
@@ -223,19 +227,24 @@ export function RecordingControlBar({
     let cancelled = false;
     let unsubscribe: () => void = () => {};
 
-    void subscribeMicActivity((otherAppActive) => {
+    void subscribeMicActivity((otherAppActive, activeApp) => {
       const hasJustBecomeActive =
         otherAppActive && !wasOtherAppActiveRef.current;
       wasOtherAppActiveRef.current = otherAppActive;
       if (!otherAppActive) {
         setIsCallSuggestionVisible(false);
+        setDetectedCallApp(null);
         return;
       }
       if (hasJustBecomeActive && canSuggestCallRef.current) {
+        const appName = activeApp ?? null;
+        setDetectedCallApp(appName);
         setIsCallSuggestionVisible(true);
         void requestCallAttention({
           title: dict.recorder.callDetectedTitle,
-          body: dict.recorder.callDetectedBody,
+          body: appName
+            ? dict.recorder.callDetectedAppBody.replace("{app}", appName)
+            : dict.recorder.callDetectedBody,
         });
       }
     }).then((stop) => {
@@ -853,7 +862,12 @@ export function RecordingControlBar({
                 {dict.recorder.callDetectedTitle}
               </p>
               <p className="text-[11px] text-orange-300">
-                {dict.recorder.callDetectedHint}
+                {detectedCallApp
+                  ? dict.recorder.callDetectedAppHint.replace(
+                      "{app}",
+                      detectedCallApp
+                    )
+                  : dict.recorder.callDetectedHint}
               </p>
             </div>
           </div>

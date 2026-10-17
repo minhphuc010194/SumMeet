@@ -87,10 +87,11 @@ describe("Mic activity service", () => {
     registerMock.mockResolvedValue(undefined);
   });
 
-  it("forwards the other-app flag of each mic-activity event", async () => {
+  it("forwards the other-app flag and active app name of each mic-activity event", async () => {
     const unlisten = vi.fn();
-    let handler: (event: { payload: { otherAppActive: boolean } }) => void =
-      () => {};
+    let handler: (event: {
+      payload: { otherAppActive: boolean; activeApp?: string | null };
+    }) => void = () => {};
     listenMock.mockImplementation(async (_event, callback) => {
       handler = callback as typeof handler;
       return unlisten;
@@ -98,11 +99,14 @@ describe("Mic activity service", () => {
     const onChange = vi.fn();
 
     const stop = await subscribeMicActivity(onChange);
-    handler({ payload: { otherAppActive: true } });
+    handler({ payload: { otherAppActive: true, activeApp: "Zoom" } });
     handler({ payload: { otherAppActive: false } });
 
     expect(listenMock.mock.calls[0][0]).toBe("mic-activity");
-    expect(onChange.mock.calls).toEqual([[true], [false]]);
+    expect(onChange.mock.calls).toEqual([
+      [true, "Zoom"],
+      [false, null],
+    ]);
     expect(stop).toBe(unlisten);
   });
 
