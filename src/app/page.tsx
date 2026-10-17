@@ -7,7 +7,7 @@ export default function RootRedirectPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/vi/");
+    router.replace("/en/");
   }, [router]);
 
   return null;
