@@ -138,16 +138,16 @@ export function TranscriptViewer({
   return (
     <div className="flex h-full flex-col rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
       {/* Top Filter & Audio Scrubber Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
-        <div className="relative min-w-[220px] flex-1">
-          <Search className="pointer-events-none absolute top-2.5 left-3 h-4 w-4 text-slate-400" />
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-2.5">
+        <div className="relative min-w-[200px] flex-1">
+          <Search className="pointer-events-none absolute top-2 left-2.5 h-3.5 w-3.5 text-slate-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={dict.transcript.searchPlaceholder}
             aria-label={dict.transcript.searchPlaceholder}
-            className="w-full rounded-xl border border-slate-700/80 bg-slate-950 py-2 pr-3 pl-9 text-xs text-slate-100 placeholder-slate-500 focus:border-orange-500 focus:outline-none"
+            className="h-7 w-full rounded-lg border border-slate-700/80 bg-slate-950 pr-2.5 pl-8 text-xs text-slate-100 placeholder-slate-500 focus:border-orange-500 focus:outline-none"
           />
         </div>
 
@@ -155,7 +155,7 @@ export function TranscriptViewer({
           value={selectedSpeaker}
           onChange={(e) => setSelectedSpeaker(e.target.value)}
           aria-label={dict.transcript.allSpeakers}
-          className="rounded-xl border border-slate-700/80 bg-slate-950 px-3 py-2 text-xs text-slate-200 focus:border-orange-500 focus:outline-none"
+          className="h-7 rounded-lg border border-slate-700/80 bg-slate-950 px-2.5 text-xs text-slate-200 focus:border-orange-500 focus:outline-none"
         >
           <option value="ALL">{dict.transcript.allSpeakers}</option>
           {uniqueSpeakers.map(([spkId, spkName]) => (
@@ -167,9 +167,9 @@ export function TranscriptViewer({
       </div>
 
       {/* Synchronized Audio Timeline Bar */}
-      <div className="mt-3 flex items-center gap-3 rounded-xl border border-slate-800/90 bg-slate-950/80 px-3.5 py-2">
-        <Volume2 className="h-4 w-4 text-orange-400" />
-        <span className="font-mono text-xs text-orange-300">
+      <div className="mt-2.5 flex items-center gap-2.5 rounded-lg border border-slate-800/90 bg-slate-950/80 px-3 py-1.5">
+        <Volume2 className="h-3.5 w-3.5 text-orange-400" />
+        <span className="font-mono text-[11px] text-orange-300">
           {formatTimestampMmSs(currentAudioTimeMs)}
         </span>
         <input
@@ -182,13 +182,13 @@ export function TranscriptViewer({
           aria-label="Audio timeline scrubber"
           className="h-1.5 flex-1 cursor-pointer accent-orange-500"
         />
-        <span className="font-mono text-xs text-slate-400">
+        <span className="font-mono text-[11px] text-slate-400">
           {formatTimestampMmSs(maxTimelineMs)}
         </span>
       </div>
 
       {/* Diarized Transcript Segments List */}
-      <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1">
+      <div className="mt-2.5 flex-1 space-y-2.5 overflow-y-auto pr-1">
         {filteredSegments.length === 0 ? (
           <div className="flex h-44 items-center justify-center text-xs text-slate-500">
             {dict.transcript.emptyState}
@@ -203,7 +203,7 @@ export function TranscriptViewer({
             return (
               <div
                 key={segment.id}
-                className={`group rounded-xl border p-3.5 transition ${
+                className={`group rounded-xl border p-3 transition ${
                   isActive
                     ? "border-orange-500/60 bg-orange-950/30"
                     : "border-slate-800/80 bg-slate-950/50 hover:border-slate-700"
@@ -212,7 +212,7 @@ export function TranscriptViewer({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span
-                      className={`inline-flex h-6 w-6 items-center justify-center rounded-full border text-xs font-bold ${colorClass}`}
+                      className={`inline-flex h-5 w-5 items-center justify-center rounded-full border text-[11px] font-bold ${colorClass}`}
                     >
                       {segment.speakerName.slice(0, 1).toUpperCase()}
                     </span>
@@ -224,7 +224,7 @@ export function TranscriptViewer({
                           value={newSpeakerName}
                           onChange={(e) => setNewSpeakerName(e.target.value)}
                           aria-label={dict.transcript.renameSpeakerPrompt}
-                          className="rounded-lg border border-orange-500 bg-slate-900 px-2 py-0.5 text-xs text-slate-50 focus:outline-none"
+                          className="rounded-md border border-orange-500 bg-slate-900 px-2 py-0.5 text-xs text-slate-50 focus:outline-none"
                         />
                         <button
                           type="button"
@@ -253,7 +253,7 @@ export function TranscriptViewer({
 
                     {/* Channel Origin Pill (Mic vs System Loopback) */}
                     <span
-                      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-medium ${
+                      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
                         segment.channel === "mic_user"
                           ? "bg-emerald-500/15 text-emerald-300"
                           : "bg-orange-500/15 text-orange-300"
@@ -278,14 +278,14 @@ export function TranscriptViewer({
                     type="button"
                     onClick={() => setCurrentAudioTimeMs(segment.startMs)}
                     title={dict.transcript.clickToSeek}
-                    className="inline-flex items-center gap-1 rounded-md bg-slate-800/80 px-2 py-0.5 font-mono text-[11px] text-slate-300 transition hover:bg-orange-600 hover:text-white"
+                    className="inline-flex items-center gap-1 rounded bg-slate-800/80 px-1.5 py-0.5 font-mono text-[11px] text-slate-300 transition hover:bg-orange-600 hover:text-white"
                   >
                     <Clock className="h-3 w-3" />
                     {formatTimestampMmSs(segment.startMs)}
                   </button>
                 </div>
 
-                <p className="mt-2 text-sm leading-relaxed text-slate-200">
+                <p className="mt-1.5 text-sm leading-relaxed text-slate-200">
                   {segment.text}
                 </p>
               </div>
@@ -297,7 +297,7 @@ export function TranscriptViewer({
       {/* Bottom Quick Live Utterance / Note Bar */}
       <form
         onSubmit={handleAddSegment}
-        className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3"
+        className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-slate-800 pt-2.5"
       >
         <select
           value={liveNoteChannel}
@@ -305,7 +305,7 @@ export function TranscriptViewer({
             setLiveNoteChannel(e.target.value as AudioSourceChannel)
           }
           aria-label="Audio channel selector"
-          className="rounded-xl border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-200"
+          className="h-7 rounded-lg border border-slate-700 bg-slate-950 px-2 text-xs text-slate-200"
         >
           <option value="mic_user">🎙️ {dict.transcript.channelMicTag}</option>
           <option value="system_remote">
@@ -318,14 +318,14 @@ export function TranscriptViewer({
           value={liveNoteText}
           onChange={(e) => setLiveNoteText(e.target.value)}
           placeholder={dict.transcript.addLiveNotePlaceholder}
-          className="min-w-[200px] flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-orange-500 focus:outline-none"
+          className="h-7 min-w-[180px] flex-1 rounded-lg border border-slate-700 bg-slate-950 px-2.5 text-xs text-slate-100 placeholder-slate-500 focus:border-orange-500 focus:outline-none"
         />
 
         <button
           type="submit"
-          className="inline-flex items-center gap-1.5 rounded-xl bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:bg-orange-600"
+          className="inline-flex h-7 items-center gap-1 rounded-lg bg-slate-800 px-2.5 text-xs font-medium text-slate-100 transition hover:bg-orange-600 hover:text-white"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="h-3 w-3" />
           {dict.transcript.addLiveNoteButton}
         </button>
       </form>

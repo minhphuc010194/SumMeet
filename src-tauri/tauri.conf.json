@@ -36,6 +36,9 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": ["app", "dmg", "nsis"],
+    "shortDescription": "Ghi âm & Tóm tắt cuộc họp bằng AI",
+    "longDescription": "Ứng dụng ghi âm cuộc họp (Micro + Âm thanh hệ thống), gỡ băng thời gian thực, tóm tắt thông minh và hỏi đáp AI.",
+    "copyright": "Ứng dụng ghi âm cuộc họp (Micro + Âm thanh hệ thống), gỡ băng thời gian thực, tóm tắt thông minh và hỏi đáp AI.\n\n© 2026 SumMeet",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

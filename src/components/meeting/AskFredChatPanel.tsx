@@ -100,10 +100,10 @@ export function AskFredChatPanel({
   return (
     <div className="flex h-full flex-col rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-orange-500/20 text-orange-400">
-            <Sparkles className="h-4 w-4" />
+      <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+        <div className="flex items-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-500/20 text-orange-400">
+            <Sparkles className="h-3.5 w-3.5" />
           </div>
           <div>
             <h3 className="text-xs font-bold text-slate-50">
@@ -119,7 +119,7 @@ export function AskFredChatPanel({
           <button
             type="button"
             onClick={() => clearChatHistory(meeting.id)}
-            className="inline-flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 px-2.5 py-1 text-[11px] text-slate-400 hover:border-slate-700 hover:text-rose-300"
+            className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-800 bg-slate-950 px-2 text-[11px] text-slate-400 hover:border-slate-700 hover:text-rose-300"
           >
             <Trash2 className="h-3 w-3" />
             {dict.askFred.clearHistory}
@@ -128,14 +128,14 @@ export function AskFredChatPanel({
       </div>
 
       {/* Suggested Prompts */}
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
         {dict.askFred.suggestedQuestions.map((promptText, idx) => (
           <button
             key={idx}
             type="button"
             disabled={isAsking}
             onClick={() => handleAskQuestion(promptText)}
-            className="inline-flex items-center gap-1 rounded-full border border-orange-500/30 bg-orange-950/30 px-2.5 py-1 text-[11px] text-orange-200 transition hover:border-orange-400 hover:bg-orange-900/40 disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-full border border-orange-500/30 bg-orange-950/30 px-2 py-0.5 text-[11px] text-orange-200 transition hover:border-orange-400 hover:bg-orange-900/40 disabled:opacity-50"
           >
             <MessageSquarePlus className="h-3 w-3 text-orange-400" />
             {promptText}
@@ -222,7 +222,7 @@ export function AskFredChatPanel({
           e.preventDefault();
           handleAskQuestion(questionInput);
         }}
-        className="mt-3 flex items-center gap-2 border-t border-slate-800 pt-3"
+        className="mt-2.5 flex items-center gap-1.5 border-t border-slate-800 pt-2.5"
       >
         <input
           type="text"
@@ -230,14 +230,14 @@ export function AskFredChatPanel({
           onChange={(e) => setQuestionInput(e.target.value)}
           placeholder={dict.askFred.inputPlaceholder}
           aria-label={dict.askFred.inputPlaceholder}
-          className="flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-orange-500 focus:outline-none"
+          className="h-8 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 text-xs text-slate-100 placeholder-slate-500 focus:border-orange-500 focus:outline-none"
         />
         <button
           type="submit"
           disabled={isAsking || !questionInput.trim()}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-orange-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-orange-500 disabled:opacity-50"
+          className="inline-flex h-8 items-center gap-1 rounded-lg bg-orange-600 px-3 text-xs font-semibold text-white transition hover:bg-orange-500 disabled:opacity-50"
         >
-          <Send className="h-3.5 w-3.5" />
+          <Send className="h-3 w-3" />
           {dict.askFred.sendButton}
         </button>
       </form>

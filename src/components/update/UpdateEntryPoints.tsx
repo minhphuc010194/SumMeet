@@ -41,7 +41,8 @@ export function UpdateButton({ locale, className = "" }: UpdateButtonProps) {
 }
 
 export function UpdateSettingsSection({ locale }: UpdateEntryProps) {
-  const dict = getDictionary(locale).update;
+  const appDict = getDictionary(locale);
+  const dict = appDict.update;
   const appVersion = useUpdateStore((state) => state.appVersion);
   const loadAppVersion = useUpdateStore((state) => state.loadAppVersion);
   const checkForUpdateManually = useUpdateStore(
@@ -53,10 +54,13 @@ export function UpdateSettingsSection({ locale }: UpdateEntryProps) {
   }, [loadAppVersion]);
 
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-950/40 p-4">
-      <h3 className="mb-3 border-b border-slate-800 pb-2.5 text-xs font-bold text-slate-200">
+    <section className="rounded-xl border border-slate-800 bg-slate-950/40 p-3.5">
+      <h3 className="mb-2 border-b border-slate-800 pb-2 text-xs font-bold text-slate-200">
         {dict.settingsTitle}
       </h3>
+      <p className="mb-2.5 text-[11px] leading-relaxed text-slate-400">
+        {appDict.appTagline}
+      </p>
       <div className="flex items-center justify-between gap-3">
         <p className="text-xs text-slate-300">
           {dict.currentVersion.replace("{version}", appVersion ?? "—")}
@@ -64,7 +68,7 @@ export function UpdateSettingsSection({ locale }: UpdateEntryProps) {
         <button
           type="button"
           onClick={() => void checkForUpdateManually()}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-orange-500/40 bg-orange-500/15 px-4 text-xs font-semibold text-orange-200 transition hover:bg-orange-600 hover:text-white"
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-orange-500/40 bg-orange-500/15 px-3 text-xs font-semibold text-orange-200 transition hover:bg-orange-600 hover:text-white"
         >
           <RefreshCw className="h-3.5 w-3.5" />
           {dict.checkButton}
@@ -102,18 +106,21 @@ export function UpdateCheckPanel({ locale }: UpdateEntryProps) {
         <Image
           src="/logo-mark.png"
           alt=""
-          width={64}
-          height={64}
-          className="h-16 w-16 rounded-2xl shadow-md shadow-orange-600/20"
+          width={56}
+          height={56}
+          className="h-14 w-14 rounded-2xl shadow-md shadow-orange-600/20"
         />
-        <h3 className="mt-3 text-base font-bold text-slate-50">
+        <h3 className="mt-2.5 text-sm font-bold text-slate-50">
           {appDict.appName}
         </h3>
         <p className="mt-0.5 text-xs text-slate-400">
           {dict.versionLabel.replace("{version}", appVersion ?? "—")}
         </p>
+        <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
+          {appDict.appTagline}
+        </p>
 
-        <div className="mt-5 flex min-h-5 items-center justify-center text-xs">
+        <div className="mt-4 flex min-h-5 items-center justify-center text-xs">
           {checkPanel === "checking" && (
             <p
               role="status"
@@ -139,7 +146,7 @@ export function UpdateCheckPanel({ locale }: UpdateEntryProps) {
           <button
             type="button"
             onClick={() => void checkForUpdateManually()}
-            className="mt-5 inline-flex h-10 items-center rounded-lg bg-orange-600 px-5 text-xs font-semibold text-white shadow-md shadow-orange-600/20 transition hover:bg-orange-500"
+            className="mt-4 inline-flex h-8 items-center rounded-lg bg-orange-600 px-3.5 text-xs font-semibold text-white shadow-sm shadow-orange-600/20 transition hover:bg-orange-500"
           >
             {dict.tryAgain}
           </button>
@@ -150,7 +157,8 @@ export function UpdateCheckPanel({ locale }: UpdateEntryProps) {
 }
 
 export function UpdateMenu({ locale }: UpdateEntryProps) {
-  const dict = getDictionary(locale).update;
+  const appDict = getDictionary(locale);
+  const dict = appDict.update;
   const checkForUpdateManually = useUpdateStore(
     (state) => state.checkForUpdateManually
   );
@@ -158,9 +166,10 @@ export function UpdateMenu({ locale }: UpdateEntryProps) {
   useEffect(() => {
     void setupUpdateMenu({
       label: dict.menuCheckForUpdates,
+      aboutCredits: appDict.appTagline,
       onSelect: checkForUpdateManually,
     });
-  }, [dict, checkForUpdateManually]);
+  }, [dict, appDict.appTagline, checkForUpdateManually]);
 
   return null;
 }

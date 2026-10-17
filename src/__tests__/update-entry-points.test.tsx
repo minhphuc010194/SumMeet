@@ -18,8 +18,10 @@ const mocks = vi.hoisted(() => ({
   check: vi.fn(),
   defaultMenu: vi.fn(),
   newMenuItem: vi.fn(),
+  newPredefinedMenuItem: vi.fn(),
   FakeSubmenu: class {
     insert = vi.fn();
+    removeAt = vi.fn();
     close = vi.fn();
   },
 }));
@@ -30,6 +32,7 @@ vi.mock("@tauri-apps/api/menu", () => ({
   Submenu: mocks.FakeSubmenu,
   Menu: { default: mocks.defaultMenu },
   MenuItem: { new: mocks.newMenuItem },
+  PredefinedMenuItem: { new: mocks.newPredefinedMenuItem },
 }));
 vi.mock("@tauri-apps/plugin-process", () => ({ relaunch: vi.fn() }));
 vi.mock("@tauri-apps/plugin-updater", () => ({ check: mocks.check }));
@@ -83,6 +86,9 @@ describe("update entry points", () => {
     mocks.check.mockReset().mockResolvedValue(null);
     mocks.defaultMenu.mockReset();
     mocks.newMenuItem.mockReset();
+    mocks.newPredefinedMenuItem
+      .mockReset()
+      .mockResolvedValue({ close: vi.fn() });
     useUpdateStore.setState({
       update: null,
       isDialogOpen: false,
@@ -243,6 +249,7 @@ describe("update entry points", () => {
         await screen.findByText(dict.currentVersion.replace("{version}", "1.0.2"))
       ).toBeTruthy();
       expect(screen.getByText(dict.settingsTitle)).toBeTruthy();
+      expect(screen.getByText(getDictionary("en").appTagline)).toBeTruthy();
       expect(button(dict.checkButton)).toBeTruthy();
     });
 
@@ -298,6 +305,9 @@ describe("update entry points", () => {
 
       expect(panelHeading(dict.checkButton)).toBeTruthy();
       expect(screen.getByText(appName)).toBeTruthy();
+      expect(
+        screen.getAllByText(getDictionary("en").appTagline).length
+      ).toBeGreaterThanOrEqual(2);
       expect(
         screen.getByText(dict.versionLabel.replace("{version}", "1.0.2"))
       ).toBeTruthy();
@@ -631,6 +641,17 @@ describe("update entry points", () => {
       expect(mocks.newMenuItem).toHaveBeenCalledWith(
         expect.objectContaining({ text: dict.menuCheckForUpdates })
       );
+      expect(mocks.newPredefinedMenuItem).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: "About SumMeet",
+          item: {
+            About: expect.objectContaining({
+              name: "SumMeet",
+              credits: getDictionary("en").appTagline,
+            }),
+          },
+        })
+      );
 
       rerender(<UpdateMenu locale="vi" />);
 
@@ -639,6 +660,32 @@ describe("update entry points", () => {
           viDict.menuCheckForUpdates
         )
       );
+      await waitFor(() =>
+        expect(mocks.newPredefinedMenuItem).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            text: "About SumMeet",
+            item: {
+              About: expect.objectContaining({
+                name: "SumMeet",
+                credits: getDictionary("vi").appTagline,
+              }),
+            },
+          })
+        )
+      );
+      await Promise.all([
+        updater.setupUpdateMenu({
+          label: viDict.menuCheckForUpdates,
+          aboutCredits: getDictionary("vi").appTagline,
+          onSelect: vi.fn(),
+        }),
+        updater.setupUpdateMenu({
+          label: viDict.menuCheckForUpdates,
+          aboutCredits: getDictionary("vi").appTagline,
+          onSelect: vi.fn(),
+        }),
+      ]);
+      expect(appMenu.removeAt).toHaveBeenCalledTimes(2);
       expect(mocks.defaultMenu).toHaveBeenCalledTimes(1);
       expect(mocks.newMenuItem).toHaveBeenCalledTimes(1);
     });
