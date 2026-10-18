@@ -1,6 +1,12 @@
-# SumMeet
-
-SumMeet is a macOS and Windows desktop app that records your meetings and turns them into transcripts and AI summaries, with no bot joining the call.
+<div align="center">
+  <img src="src-tauri/icons/icon.png" alt="SumMeet" width="128" height="128" />
+  <h1>SumMeet</h1>
+  <p><strong>macOS and Windows desktop app that records your meetings and turns them into transcripts and AI summaries, with no bot joining the call.</strong></p>
+  <p>
+    <a href="https://github.com/minhphuc010194/SumMeet/releases/latest"><img src="https://img.shields.io/github/v/release/minhphuc010194/SumMeet?style=flat-square&label=release" alt="Latest Release" /></a>
+    <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-0f172a?style=flat-square" alt="Platform: macOS | Windows" />
+  </p>
+</div>
 
 ## Download
 
