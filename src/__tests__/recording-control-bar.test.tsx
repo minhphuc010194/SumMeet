@@ -2060,6 +2060,14 @@ describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", (
     });
 
     expect(
+      screen.queryByText(new RegExp(dict.summary.providerBadge))
+    ).toBeNull();
+    expect(
+      screen.queryByText(
+        new RegExp(useMeetingStore.getState().meetings[0].summary.providerUsed)
+      )
+    ).toBeNull();
+    expect(
       within(languageSelect)
         .getAllByRole("option")
         .map((opt) => (opt as HTMLOptionElement).value)
