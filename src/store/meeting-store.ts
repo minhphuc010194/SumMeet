@@ -81,6 +81,7 @@ interface MeetingStoreState {
   deleteMeeting: (meetingId: string) => void;
   clearAllMeetings: () => void;
   appendTranscriptSegment: (meetingId: string, segment: TranscriptSegment) => void;
+  clearTranscriptSegments: (meetingId: string) => void;
   renameSpeaker: (meetingId: string, speakerId: string, newName: string) => void;
   toggleActionItem: (meetingId: string, actionItemId: string) => void;
   updateMeetingSummary: (meetingId: string, summary: MeetingSummary) => void;
@@ -227,9 +228,18 @@ export const useMeetingStore = create<MeetingStoreState>()(
             return {
               ...m,
               participants: Array.from(participantsSet),
-              segments: [...m.segments, segment],
+              segments: [...m.segments, segment].sort(
+                (a, b) => a.startMs - b.startMs
+              ),
             };
           }),
+        })),
+
+      clearTranscriptSegments: (meetingId) =>
+        set((state) => ({
+          meetings: state.meetings.map((m) =>
+            m.id === meetingId ? { ...m, segments: [] } : m
+          ),
         })),
 
       renameSpeaker: (meetingId, speakerId, newName) => {

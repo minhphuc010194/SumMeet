@@ -386,3 +386,109 @@ describe("System audio capture settings", () => {
     expect(useMeetingStore.getState().recordingSystemTranscribedSec).toBe(0);
   });
 });
+
+describe("Transcript segment ordering and clearing", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useMeetingStore.setState({ meetings: [], selectedMeetingId: "" });
+  });
+
+  it("keeps segments sorted by startMs when mic_user and system_remote arrive out of order", () => {
+    const { createMeetingSession, appendTranscriptSegment } =
+      useMeetingStore.getState();
+    const meeting = createMeetingSession({ ...SESSION_PARAMS, locale: "en" });
+
+    appendTranscriptSegment(meeting.id, {
+      id: "seg-mic-late",
+      meetingId: meeting.id,
+      speakerId: "spk_user_me",
+      speakerName: "You (Mic)",
+      channel: "mic_user",
+      text: "Third utterance",
+      startMs: 12000,
+      endMs: 15000,
+      confidence: 0.95,
+    });
+    appendTranscriptSegment(meeting.id, {
+      id: "seg-sys-early",
+      meetingId: meeting.id,
+      speakerId: "spk_remote_1",
+      speakerName: "Speaker 1",
+      channel: "system_remote",
+      text: "First utterance",
+      startMs: 4000,
+      endMs: 8000,
+      confidence: 0.95,
+    });
+    appendTranscriptSegment(meeting.id, {
+      id: "seg-mic-mid",
+      meetingId: meeting.id,
+      speakerId: "spk_user_me",
+      speakerName: "You (Mic)",
+      channel: "mic_user",
+      text: "Second utterance",
+      startMs: 9000,
+      endMs: 11000,
+      confidence: 0.95,
+    });
+
+    const stored = useMeetingStore
+      .getState()
+      .meetings.find((m) => m.id === meeting.id);
+    expect(stored?.segments.map((s) => [s.id, s.channel, s.startMs])).toEqual([
+      ["seg-sys-early", "system_remote", 4000],
+      ["seg-mic-mid", "mic_user", 9000],
+      ["seg-mic-late", "mic_user", 12000],
+    ]);
+  });
+
+  it("clears transcript segments only for the target meeting", () => {
+    const {
+      createMeetingSession,
+      appendTranscriptSegment,
+      clearTranscriptSegments,
+    } = useMeetingStore.getState();
+    const target = createMeetingSession({
+      ...SESSION_PARAMS,
+      id: "mtg-target",
+      locale: "en",
+    });
+    const other = createMeetingSession({
+      ...SESSION_PARAMS,
+      id: "mtg-other",
+      locale: "en",
+    });
+
+    appendTranscriptSegment(target.id, {
+      id: "seg-target",
+      meetingId: target.id,
+      speakerId: "spk_user_me",
+      speakerName: "You (Mic)",
+      channel: "mic_user",
+      text: "Legacy mixed segment",
+      startMs: 1000,
+      endMs: 3000,
+      confidence: 0.95,
+    });
+    appendTranscriptSegment(other.id, {
+      id: "seg-other",
+      meetingId: other.id,
+      speakerId: "spk_user_me",
+      speakerName: "You (Mic)",
+      channel: "mic_user",
+      text: "Keep me",
+      startMs: 1000,
+      endMs: 3000,
+      confidence: 0.95,
+    });
+
+    clearTranscriptSegments(target.id);
+
+    const meetings = useMeetingStore.getState().meetings;
+    expect(meetings.find((m) => m.id === target.id)?.segments).toEqual([]);
+    expect(
+      meetings.find((m) => m.id === other.id)?.segments.map((s) => s.id)
+    ).toEqual(["seg-other"]);
+  });
+});
+

@@ -1592,6 +1592,7 @@ describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", (
       expect.objectContaining({
         meetingId: meeting.id,
         startSec: 0,
+        dualTrack: true,
         apiKey: "sk-or-test",
         locale: "en",
       })
@@ -1697,6 +1698,8 @@ describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", (
         meetingId: meeting.id,
         startSec: 60,
         maxSliceSec: 30,
+        dualTrack: true,
+        onResetMixedSegments: undefined,
       })
     );
     expect(onToast).toHaveBeenCalledWith(dictEn.errors.transcriptionFailed);
@@ -1730,8 +1733,209 @@ describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", (
         meetingId: meeting.id,
         startSec: 120,
         maxSliceSec: 30,
+        dualTrack: true,
+        onResetMixedSegments: undefined,
       })
     );
+  });
+
+  it("re-transcribes from split tracks and replaces legacy mic-only segments when Regenerate is clicked", async () => {
+    const meeting = useMeetingStore.getState().createMeetingSession({
+      title: "Legacy Mixed Meeting",
+      audioDeviceUsed: "Mic",
+      isHeadphoneSession: false,
+      locale: "en",
+    });
+    const legacyMixedSegment: TranscriptSegment = {
+      id: "seg-legacy-mixed",
+      meetingId: meeting.id,
+      speakerId: "spk_user_me",
+      speakerName: "You (Mic)",
+      channel: "mic_user",
+      text: "Both speakers collapsed into mic_user",
+      startMs: 0,
+      endMs: 100_000,
+      confidence: 0.99,
+    };
+    useMeetingStore
+      .getState()
+      .appendTranscriptSegment(meeting.id, legacyMixedSegment);
+    useMeetingStore.getState().completeMeetingRecording(meeting.id, 100);
+
+    const recoveredMicSegment: TranscriptSegment = {
+      id: "seg-recovered-mic",
+      meetingId: meeting.id,
+      speakerId: "spk_user_me",
+      speakerName: "You (Mic)",
+      channel: "mic_user",
+      text: "Hello from mic",
+      startMs: 10_000,
+      endMs: 20_000,
+      confidence: 0.99,
+    };
+    const recoveredSysSegment: TranscriptSegment = {
+      id: "seg-recovered-sys",
+      meetingId: meeting.id,
+      speakerId: "spk_remote_1",
+      speakerName: "Speaker 1",
+      channel: "system_remote",
+      text: "Hello from system audio",
+      startMs: 2_000,
+      endMs: 8_000,
+      confidence: 0.99,
+    };
+
+    tailMock.mockImplementationOnce(
+      async ({ onResetMixedSegments, onSegments }) => {
+        onResetMixedSegments?.();
+        onSegments([recoveredMicSegment, recoveredSysSegment], 100);
+        return { success: true };
+      }
+    );
+    summaryMock.mockResolvedValue({
+      success: true,
+      data: summaryFor(meeting.id),
+    });
+
+    const onToast = vi.fn();
+    render(
+      <SmartSummaryPanel
+        meeting={useMeetingStore.getState().meetings[0]}
+        dict={dictEn}
+        locale="en"
+        onToast={onToast}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dictEn.summary.regenerateButton })
+    );
+
+    await waitFor(() => expect(summaryMock).toHaveBeenCalledTimes(1));
+    expect(tailMock).toHaveBeenCalledTimes(1);
+    expect(tailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        meetingId: meeting.id,
+        startSec: 100,
+        dualTrack: true,
+        onResetMixedSegments: expect.any(Function),
+      })
+    );
+    const updated = useMeetingStore.getState().meetings[0];
+    expect(updated.segments).toEqual([
+      recoveredSysSegment,
+      recoveredMicSegment,
+    ]);
+    expect(summaryMock.mock.calls[0][0].segments).toEqual([
+      recoveredSysSegment,
+      recoveredMicSegment,
+    ]);
+  });
+
+  it("keeps dualTrackVerified unset when tail transcription fails on a legacy mic-only meeting so a second Regenerate click retries the reset", async () => {
+    const meeting = useMeetingStore.getState().createMeetingSession({
+      title: "Retry Legacy Mixed Meeting",
+      audioDeviceUsed: "Mic",
+      isHeadphoneSession: false,
+      locale: "en",
+    });
+    const legacyMixedSegment: TranscriptSegment = {
+      id: "seg-legacy-mixed-retry",
+      meetingId: meeting.id,
+      speakerId: "spk_user_me",
+      speakerName: "You (Mic)",
+      channel: "mic_user",
+      text: "Both speakers collapsed into mic_user",
+      startMs: 0,
+      endMs: 100_000,
+      confidence: 0.99,
+    };
+    useMeetingStore
+      .getState()
+      .appendTranscriptSegment(meeting.id, legacyMixedSegment);
+    useMeetingStore.getState().completeMeetingRecording(meeting.id, 100);
+
+    const recoveredSysSegment: TranscriptSegment = {
+      id: "seg-recovered-sys-retry",
+      meetingId: meeting.id,
+      speakerId: "spk_remote_1",
+      speakerName: "Speaker 1",
+      channel: "system_remote",
+      text: "Recovered system audio",
+      startMs: 2_000,
+      endMs: 8_000,
+      confidence: 0.99,
+    };
+
+    tailMock
+      .mockResolvedValueOnce({
+        success: false,
+        error: dictEn.errors.transcriptionFailed,
+      })
+      .mockImplementationOnce(async ({ onResetMixedSegments, onSegments }) => {
+        onResetMixedSegments?.();
+        onSegments([recoveredSysSegment], 100);
+        return { success: true };
+      });
+    summaryMock.mockResolvedValue({
+      success: true,
+      data: summaryFor(meeting.id),
+    });
+
+    const onToast = vi.fn();
+    const { rerender } = render(
+      <SmartSummaryPanel
+        meeting={useMeetingStore.getState().meetings[0]}
+        dict={dictEn}
+        locale="en"
+        onToast={onToast}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dictEn.summary.regenerateButton })
+    );
+
+    await waitFor(() => expect(summaryMock).toHaveBeenCalledTimes(1));
+    expect(tailMock).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        meetingId: meeting.id,
+        startSec: 100,
+        dualTrack: true,
+        onResetMixedSegments: expect.any(Function),
+      })
+    );
+    expect(useMeetingStore.getState().meetings[0].segments).toEqual([
+      legacyMixedSegment,
+    ]);
+
+    rerender(
+      <SmartSummaryPanel
+        meeting={useMeetingStore.getState().meetings[0]}
+        dict={dictEn}
+        locale="en"
+        onToast={onToast}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dictEn.summary.regenerateButton })
+    );
+
+    await waitFor(() => expect(summaryMock).toHaveBeenCalledTimes(2));
+    expect(tailMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        meetingId: meeting.id,
+        startSec: 100,
+        dualTrack: true,
+        onResetMixedSegments: expect.any(Function),
+      })
+    );
+    expect(useMeetingStore.getState().meetings[0].segments).toEqual([
+      recoveredSysSegment,
+    ]);
   });
 
   it("shows a spinning indicator and disables the template selector while regenerating", async () => {
@@ -1745,6 +1949,7 @@ describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", (
       .getState()
       .appendTranscriptSegment(meeting.id, {
         ...segmentFor(meeting.id),
+        channel: "system_remote",
         startMs: 0,
         endMs: 120_000,
       });
@@ -1806,6 +2011,4 @@ describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", (
     expect(templateSelect.disabled).toBe(false);
   });
 });
-
-
 
