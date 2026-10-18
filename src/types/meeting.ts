@@ -1,5 +1,7 @@
 export type SupportedLocale = "vi" | "en";
 
+export type SummaryOutputLanguage = "auto" | SupportedLocale;
+
 export type AudioSourceChannel = "mic_user" | "system_remote";
 
 export type MeetingStatus = "recording" | "processing" | "completed" | "error";

@@ -1,4 +1,8 @@
-import type { SummaryTemplateId, TranscriptSegment } from "@/types/meeting";
+import type {
+  SummaryOutputLanguage,
+  SummaryTemplateId,
+  TranscriptSegment,
+} from "@/types/meeting";
 
 export const PROMPT_VERSION = "v1.2.0";
 
@@ -53,11 +57,15 @@ export function buildMeetingSummaryPrompt(params: {
   templateId: SummaryTemplateId;
   transcriptText: string;
   locale: "vi" | "en";
+  outputLanguage?: SummaryOutputLanguage;
 }): string {
+  const outputLanguage = params.outputLanguage ?? "auto";
   const languageDirective =
-    params.locale === "vi"
+    outputLanguage === "vi"
       ? "Write the summary, action items, key decisions, and outline in natural Vietnamese."
-      : "Write the summary, action items, key decisions, and outline in clear English.";
+      : outputLanguage === "en"
+        ? "Write the summary, action items, key decisions, and outline in clear English."
+        : "Detect the primary language of <MEETING_TRANSCRIPT_DATA> and write the summary (overview, actionItems, keyDecisions, outline, keywords) in that same language without translating to another language.";
 
   const templateInstruction =
     SUMMARY_TEMPLATE_INSTRUCTIONS[params.templateId] ??
