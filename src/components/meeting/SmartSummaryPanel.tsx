@@ -40,6 +40,7 @@ export function SmartSummaryPanel({
     settings,
     openRouterKey,
     appendTranscriptSegment,
+    clearTranscriptSegments,
     toggleActionItem,
     updateMeetingSummary,
     setCurrentAudioTimeMs,
@@ -49,7 +50,11 @@ export function SmartSummaryPanel({
     meeting.summary.templateId || "general"
   );
   const [isRegenerating, setIsRegenerating] = useState(false);
-  const transcribedSecRef = React.useRef<{ id: string; sec: number }>({
+  const transcribedSecRef = React.useRef<{
+    id: string;
+    sec: number;
+    dualTrackVerified?: boolean;
+  }>({
     id: meeting.id,
     sec: 0,
   });
@@ -71,9 +76,18 @@ export function SmartSummaryPanel({
         segmentEndSec
       );
       const isDiskRecording = !meeting.audioDataUrl?.startsWith("blob:");
-      const isTranscriptIncomplete =
+      const hasUntranscribedAudio =
         meeting.segments.length === 0 ||
         resumeStartSec < meeting.durationSeconds;
+      const hasOnlyMicSegments =
+        meeting.segments.length > 0 &&
+        !meeting.segments.some((seg) => seg.channel === "system_remote");
+      const isUnverifiedCompleteMicTranscript =
+        !hasUntranscribedAudio && !transcribedSecRef.current.dualTrackVerified;
+      const needsDualTrackCheck =
+        hasOnlyMicSegments && isUnverifiedCompleteMicTranscript;
+      const isTranscriptIncomplete =
+        hasUntranscribedAudio || needsDualTrackCheck;
       const shouldTranscribeTail = isDiskRecording && isTranscriptIncomplete;
 
       let segments = meeting.segments;
@@ -82,13 +96,25 @@ export function SmartSummaryPanel({
           meetingId: meeting.id,
           startSec: resumeStartSec,
           maxSliceSec: 30,
+          dualTrack: true,
           apiKey: openRouterKey,
           model: settings.openRouterModel,
           locale,
           transcriptionLanguage: settings.transcriptionLanguage,
+          onResetMixedSegments: needsDualTrackCheck
+            ? () => {
+                clearTranscriptSegments(meeting.id);
+                transcribedSecRef.current = {
+                  id: meeting.id,
+                  sec: 0,
+                  dualTrackVerified: true,
+                };
+              }
+            : undefined,
           onSegments: (newSegments, nextStartSec) => {
             if (typeof nextStartSec === "number") {
               transcribedSecRef.current = {
+                ...transcribedSecRef.current,
                 id: meeting.id,
                 sec: Math.max(transcribedSecRef.current.sec, nextStartSec),
               };
@@ -109,6 +135,7 @@ export function SmartSummaryPanel({
               transcribedSecRef.current.sec,
               meeting.durationSeconds
             ),
+            dualTrackVerified: true,
           };
         } else {
           const errorMessage = tail.error ?? dict.errors.transcriptionFailed;

@@ -35,7 +35,26 @@ export async function transcribeRecordingSlice(params: {
     return { success: false, error: slice.error };
   }
 
-  const sliceSec = wavBase64DurationSec(slice.data);
+  return transcribeSliceBuffer({
+    ...params,
+    wavBase64: slice.data,
+  });
+}
+
+async function transcribeSliceBuffer(params: {
+  meetingId: string;
+  startSec: number;
+  minSliceSec: number;
+  track?: RecordingTrack;
+  apiKey: string;
+  model: string;
+  locale: SupportedLocale;
+  transcriptionLanguage: AIProviderSettings["transcriptionLanguage"];
+  wavBase64: string;
+}): Promise<
+  ApiResponse<{ segments: TranscriptSegment[]; nextStartSec: number }>
+> {
+  const sliceSec = wavBase64DurationSec(params.wavBase64);
   if (sliceSec < params.minSliceSec) {
     return {
       success: true,
@@ -51,7 +70,7 @@ export async function transcribeRecordingSlice(params: {
     locale: params.locale,
     transcriptionLanguage: params.transcriptionLanguage,
     startOffsetSec: params.startSec,
-    wavBase64: slice.data,
+    wavBase64: params.wavBase64,
     format: "wav",
   });
   if (!transcription.success || !transcription.data) {
@@ -67,33 +86,51 @@ export async function transcribeRecordingSlice(params: {
   };
 }
 
-export async function transcribeRecordingTail(params: {
-  meetingId: string;
-  startSec: number;
-  maxSliceSec?: number;
-  track?: RecordingTrack;
-  apiKey: string;
-  model: string;
-  locale: SupportedLocale;
-  transcriptionLanguage: AIProviderSettings["transcriptionLanguage"];
-  onSegments: (segments: TranscriptSegment[], nextStartSec?: number) => void;
-}): Promise<ApiResponse<null>> {
-  const { onSegments, ...sliceParams } = params;
-  let startSec = params.startSec;
+type BaseSliceParams = Omit<
+  Parameters<typeof transcribeRecordingSlice>[0],
+  "startSec" | "minSliceSec" | "track"
+>;
+
+async function transcribeSliceWithRetry(
+  params: BaseSliceParams & {
+    startSec: number;
+    track?: RecordingTrack;
+    prefetchedWavBase64?: string;
+  }
+) {
+  const runAttempt = () =>
+    params.prefetchedWavBase64 !== undefined
+      ? transcribeSliceBuffer({
+          ...params,
+          minSliceSec: 1,
+          wavBase64: params.prefetchedWavBase64,
+        })
+      : transcribeRecordingSlice({
+          ...params,
+          minSliceSec: 1,
+        });
+  let tail = await runAttempt();
+  if (!tail.success && params.maxSliceSec !== undefined) {
+    tail = await runAttempt();
+  }
+  return tail;
+}
+
+async function drainSingleTrackTail(
+  params: BaseSliceParams & {
+    startSec: number;
+    track?: RecordingTrack;
+    onSegments: (segments: TranscriptSegment[], nextStartSec?: number) => void;
+  }
+): Promise<ApiResponse<null>> {
+  const { onSegments, startSec: initialStartSec, ...sliceParams } = params;
+  let startSec = initialStartSec;
   let hasMoreAudio = true;
   while (hasMoreAudio) {
-    let tail = await transcribeRecordingSlice({
+    const tail = await transcribeSliceWithRetry({
       ...sliceParams,
       startSec,
-      minSliceSec: 1,
     });
-    if (!tail.success && params.maxSliceSec !== undefined) {
-      tail = await transcribeRecordingSlice({
-        ...sliceParams,
-        startSec,
-        minSliceSec: 1,
-      });
-    }
     if (!tail.success || !tail.data) {
       return { success: false, error: tail.error };
     }
@@ -101,6 +138,120 @@ export async function transcribeRecordingTail(params: {
     onSegments(tail.data.segments, tail.data.nextStartSec);
     hasMoreAudio = tail.data.nextStartSec > startSec;
     startSec = tail.data.nextStartSec;
+  }
+  return { success: true };
+}
+
+export async function transcribeRecordingTail(params: {
+  meetingId: string;
+  startSec: number;
+  maxSliceSec?: number;
+  track?: RecordingTrack;
+  dualTrack?: boolean;
+  apiKey: string;
+  model: string;
+  locale: SupportedLocale;
+  transcriptionLanguage: AIProviderSettings["transcriptionLanguage"];
+  onResetMixedSegments?: () => void;
+  onSegments: (segments: TranscriptSegment[], nextStartSec?: number) => void;
+}): Promise<ApiResponse<null>> {
+  const {
+    onSegments,
+    onResetMixedSegments,
+    dualTrack,
+    track,
+    startSec: initialStartSec,
+    ...baseParams
+  } = params;
+
+  if (!dualTrack) {
+    return drainSingleTrackTail({
+      ...baseParams,
+      startSec: initialStartSec,
+      track,
+      onSegments,
+    });
+  }
+
+  const probeStartSec = onResetMixedSegments ? 0 : initialStartSec;
+  const maxSec = baseParams.maxSliceSec ?? MAX_CHUNK_SEC;
+  const micProbe = await readRecordingSlice({
+    meetingId: baseParams.meetingId,
+    startSec: probeStartSec,
+    maxSec,
+    track: "mic",
+    locale: baseParams.locale,
+  });
+  if (!micProbe.success || micProbe.data === undefined) {
+    return drainSingleTrackTail({
+      ...baseParams,
+      startSec: initialStartSec,
+      onSegments,
+    });
+  }
+
+  const sysProbe = await readRecordingSlice({
+    meetingId: baseParams.meetingId,
+    startSec: probeStartSec,
+    maxSec,
+    track: "system",
+    locale: baseParams.locale,
+  });
+  if (!sysProbe.success || sysProbe.data === undefined) {
+    return drainSingleTrackTail({
+      ...baseParams,
+      startSec: initialStartSec,
+      onSegments,
+    });
+  }
+
+  let didResetMixedSegments = false;
+  let startSec = probeStartSec;
+  let pendingProbes: { micWav: string; sysWav: string } | null = {
+    micWav: micProbe.data,
+    sysWav: sysProbe.data,
+  };
+  let hasMoreAudio = true;
+  while (hasMoreAudio) {
+    const currentProbes = pendingProbes;
+    pendingProbes = null;
+
+    const micTail = await transcribeSliceWithRetry({
+      ...baseParams,
+      track: "mic",
+      startSec,
+      prefetchedWavBase64: currentProbes?.micWav,
+    });
+    if (!micTail.success || !micTail.data) {
+      return { success: false, error: micTail.error };
+    }
+
+    const sysTail = await transcribeSliceWithRetry({
+      ...baseParams,
+      track: "system",
+      startSec,
+      prefetchedWavBase64: currentProbes?.sysWav,
+    });
+    if (!sysTail.success || !sysTail.data) {
+      return { success: false, error: sysTail.error };
+    }
+
+    if (!didResetMixedSegments) {
+      onResetMixedSegments?.();
+      didResetMixedSegments = true;
+    }
+
+    const combinedSegments = [
+      ...micTail.data.segments,
+      ...sysTail.data.segments,
+    ].sort((a, b) => a.startMs - b.startMs);
+    const nextStartSec = Math.max(
+      micTail.data.nextStartSec,
+      sysTail.data.nextStartSec
+    );
+    onSegments(combinedSegments, nextStartSec);
+    hasMoreAudio = nextStartSec > startSec;
+    startSec = nextStartSec;
   }
   return { success: true };
 }

@@ -319,5 +319,273 @@ describe("Recording tail transcription after stop", () => {
     expect(result).toEqual({ success: true });
     expect(offsets).toEqual([30, 60, 60]);
   });
+
+  it("drains both mic and system tracks per slice window and sorts segments when dualTrack is enabled", async () => {
+    stubRecordingOfSeconds(50);
+    transcribeMock.mockImplementation(async ({ channel, startOffsetSec }) => ({
+      success: true,
+      data: {
+        segments: [
+          {
+            ...SEGMENT,
+            id: `seg-${channel}-${startOffsetSec}`,
+            channel,
+            text: `${channel}@${startOffsetSec}`,
+            startMs:
+              startOffsetSec * 1000 +
+              (channel === "system_remote" ? 1000 : 3000),
+            endMs: startOffsetSec * 1000 + 5000,
+          },
+        ],
+        providerUsed: "OpenRouter",
+      },
+    }));
+    const delivered: Array<{ texts: string[]; nextStartSec?: number }> = [];
+
+    const result = await transcribeRecordingTail({
+      ...TAIL_PARAMS,
+      startSec: 0,
+      maxSliceSec: 30,
+      dualTrack: true,
+      onSegments: (segments, nextStartSec) => {
+        delivered.push({
+          texts: segments.map((s) => s.text),
+          nextStartSec,
+        });
+      },
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(
+      readSliceMock.mock.calls.map(([call]) => [call.track, call.startSec])
+    ).toEqual([
+      ["mic", 0],
+      ["system", 0],
+      ["mic", 30],
+      ["system", 30],
+      ["mic", 50],
+      ["system", 50],
+    ]);
+    expect(delivered).toEqual([
+      {
+        texts: ["system_remote@0", "mic_user@0"],
+        nextStartSec: 30,
+      },
+      {
+        texts: ["system_remote@30", "mic_user@30"],
+        nextStartSec: 50,
+      },
+      {
+        texts: [],
+        nextStartSec: 50,
+      },
+    ]);
+  });
+
+  it("falls back to the default single-track file when dualTrack is enabled and the mic track file is missing", async () => {
+    readSliceMock.mockImplementation(async ({ startSec, maxSec, track }) => {
+      if (track === "mic") {
+        return { success: false, error: "recording_not_found" };
+      }
+      return {
+        success: true,
+        data: wavOfSeconds(Math.max(0, Math.min(maxSec, 25 - startSec))),
+      };
+    });
+    transcribeMock.mockImplementation(async ({ startOffsetSec }) => ({
+      success: true,
+      data: { segments: [segmentAt(startOffsetSec)], providerUsed: "OpenRouter" },
+    }));
+    const delivered: string[] = [];
+
+    const result = await transcribeRecordingTail({
+      ...TAIL_PARAMS,
+      startSec: 0,
+      maxSliceSec: 30,
+      dualTrack: true,
+      onSegments: (segments) => delivered.push(...segments.map((s) => s.text)),
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(
+      readSliceMock.mock.calls.map(([call]) => [call.track, call.startSec])
+    ).toEqual([
+      ["mic", 0],
+      [undefined, 0],
+      [undefined, 25],
+    ]);
+    expect(delivered).toEqual(["at 0"]);
+  });
+
+  it("invokes onResetMixedSegments and restarts from 0s when split tracks exist, and skips reset when they do not", async () => {
+    stubRecordingOfSeconds(20);
+    transcribeMock.mockImplementation(async ({ channel, startOffsetSec }) => ({
+      success: true,
+      data: {
+        segments: [
+          {
+            ...SEGMENT,
+            id: `seg-${channel}-${startOffsetSec}`,
+            channel,
+            text: `${channel}@${startOffsetSec}`,
+            startMs: startOffsetSec * 1000,
+            endMs: startOffsetSec * 1000 + 2000,
+          },
+        ],
+        providerUsed: "OpenRouter",
+      },
+    }));
+    const onResetWhenPresent = vi.fn();
+    const deliveredWhenPresent: string[] = [];
+
+    const presentResult = await transcribeRecordingTail({
+      ...TAIL_PARAMS,
+      startSec: 20,
+      maxSliceSec: 30,
+      dualTrack: true,
+      onResetMixedSegments: onResetWhenPresent,
+      onSegments: (segments) =>
+        deliveredWhenPresent.push(...segments.map((s) => s.text)),
+    });
+
+    expect(presentResult).toEqual({ success: true });
+    expect(onResetWhenPresent).toHaveBeenCalledTimes(1);
+    expect(deliveredWhenPresent).toEqual(["mic_user@0", "system_remote@0"]);
+
+    readSliceMock.mockReset();
+    transcribeMock.mockReset();
+    readSliceMock.mockImplementation(async ({ startSec, maxSec, track }) => {
+      if (track === "mic") {
+        return { success: false, error: "recording_not_found" };
+      }
+      return {
+        success: true,
+        data: wavOfSeconds(Math.max(0, Math.min(maxSec, 20 - startSec))),
+      };
+    });
+    const onResetWhenMissing = vi.fn();
+
+    const missingResult = await transcribeRecordingTail({
+      ...TAIL_PARAMS,
+      startSec: 20,
+      maxSliceSec: 30,
+      dualTrack: true,
+      onResetMixedSegments: onResetWhenMissing,
+      onSegments: vi.fn(),
+    });
+
+    expect(missingResult).toEqual({ success: true });
+    expect(onResetWhenMissing).not.toHaveBeenCalled();
+    expect(
+      readSliceMock.mock.calls.map(([call]) => [call.track, call.startSec])
+    ).toEqual([
+      ["mic", 0],
+      [undefined, 20],
+    ]);
+    expect(transcribeMock).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the default single-track file without calling onResetMixedSegments when the system track file is missing", async () => {
+    readSliceMock.mockImplementation(async ({ startSec, maxSec, track }) => {
+      if (track === "system") {
+        return { success: false, error: "recording_not_found" };
+      }
+      return {
+        success: true,
+        data: wavOfSeconds(Math.max(0, Math.min(maxSec, 20 - startSec))),
+      };
+    });
+    const onReset = vi.fn();
+
+    const result = await transcribeRecordingTail({
+      ...TAIL_PARAMS,
+      startSec: 20,
+      maxSliceSec: 30,
+      dualTrack: true,
+      onResetMixedSegments: onReset,
+      onSegments: vi.fn(),
+    });
+
+    expect(result).toEqual({ success: true });
+    expect(onReset).not.toHaveBeenCalled();
+    expect(
+      readSliceMock.mock.calls.map(([call]) => [call.track, call.startSec])
+    ).toEqual([
+      ["mic", 0],
+      ["system", 0],
+      [undefined, 20],
+    ]);
+    expect(transcribeMock).not.toHaveBeenCalled();
+  });
+
+  it("retries window 0 STT failure when split tracks exist and does not fall back to the default file or reset mixed segments when STT fails", async () => {
+    stubRecordingOfSeconds(20);
+    transcribeMock
+      .mockResolvedValueOnce({ success: false, error: "transient mic error" })
+      .mockResolvedValueOnce({
+        success: true,
+        data: { segments: [segmentAt(0)], providerUsed: "OpenRouter" },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          segments: [
+            {
+              ...SEGMENT,
+              id: "seg-sys-0",
+              channel: "system_remote",
+              text: "sys@0",
+            },
+          ],
+          providerUsed: "OpenRouter",
+        },
+      });
+    const onResetRecovered = vi.fn();
+
+    const recoveredResult = await transcribeRecordingTail({
+      ...TAIL_PARAMS,
+      startSec: 20,
+      maxSliceSec: 30,
+      dualTrack: true,
+      onResetMixedSegments: onResetRecovered,
+      onSegments: vi.fn(),
+    });
+
+    expect(recoveredResult).toEqual({ success: true });
+    expect(onResetRecovered).toHaveBeenCalledTimes(1);
+    expect(
+      readSliceMock.mock.calls.some(([call]) => call.track === undefined)
+    ).toBe(false);
+
+    readSliceMock.mockReset();
+    transcribeMock.mockReset();
+    stubRecordingOfSeconds(20);
+    transcribeMock.mockResolvedValue({
+      success: false,
+      error: "persistent stt error",
+    });
+    const onResetFailed = vi.fn();
+
+    const failedResult = await transcribeRecordingTail({
+      ...TAIL_PARAMS,
+      startSec: 20,
+      maxSliceSec: 30,
+      dualTrack: true,
+      onResetMixedSegments: onResetFailed,
+      onSegments: vi.fn(),
+    });
+
+    expect(failedResult).toEqual({
+      success: false,
+      error: "persistent stt error",
+    });
+    expect(transcribeMock).toHaveBeenCalledTimes(2);
+    expect(onResetFailed).not.toHaveBeenCalled();
+    expect(
+      readSliceMock.mock.calls.some(([call]) => call.track === undefined)
+    ).toBe(false);
+  });
 });
+
+
 
