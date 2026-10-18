@@ -16,6 +16,7 @@ import {
 import type { Dictionary } from "@/i18n/dictionaries";
 import type {
   Meeting,
+  SummaryOutputLanguage,
   SummaryTemplateId,
   SupportedLocale,
 } from "@/types/meeting";
@@ -50,6 +51,8 @@ export function SmartSummaryPanel({
   const [selectedTemplate, setSelectedTemplate] = useState<SummaryTemplateId>(
     meeting.summary.templateId || "general"
   );
+  const [selectedLanguage, setSelectedLanguage] =
+    useState<SummaryOutputLanguage>("auto");
   const [isRegenerating, setIsRegenerating] = useState(false);
   const transcribedSecRef = React.useRef<{
     id: string;
@@ -160,6 +163,7 @@ export function SmartSummaryPanel({
         templateId: targetTemplate,
         segments,
         locale,
+        outputLanguage: selectedLanguage,
       });
 
       if (result.success && result.data) {
@@ -221,6 +225,21 @@ export function SmartSummaryPanel({
             <Cpu className="h-3 w-3 text-orange-400" />
             {dict.summary.providerBadge} {summary.providerUsed}
           </span>
+
+          <select
+            id="summary-language-select"
+            aria-label={dict.summary.languageLabel}
+            value={selectedLanguage}
+            disabled={isRegenerating}
+            onChange={(e) =>
+              setSelectedLanguage(e.target.value as SummaryOutputLanguage)
+            }
+            className="h-7 rounded-lg border border-slate-700 bg-slate-950 px-2.5 text-xs font-medium text-slate-100 focus:border-orange-500 focus:outline-none disabled:opacity-50"
+          >
+            <option value="auto">{dict.summary.languageOptions.auto}</option>
+            <option value="vi">{dict.summary.languageOptions.vi}</option>
+            <option value="en">{dict.summary.languageOptions.en}</option>
+          </select>
 
           <button
             type="button"

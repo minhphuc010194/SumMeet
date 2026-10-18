@@ -441,6 +441,7 @@ export function RecordingControlBar({
       templateId: meeting.summary.templateId,
       segments: meeting.segments,
       locale,
+      outputLanguage: "auto",
     });
 
     const fallbackOverview = summary.error ?? dict.errors.noTranscript;

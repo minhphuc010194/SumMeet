@@ -123,6 +123,12 @@ export interface Dictionary {
   };
   summary: {
     templateLabel: string;
+    languageLabel: string;
+    languageOptions: {
+      auto: string;
+      vi: string;
+      en: string;
+    };
     regenerateButton: string;
     regenerating: string;
     overviewTitle: string;
@@ -394,6 +400,12 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
     },
     summary: {
       templateLabel: "Mẫu:",
+      languageLabel: "Ngôn ngữ:",
+      languageOptions: {
+        auto: "Tự động",
+        vi: "Tiếng Việt",
+        en: "English",
+      },
       regenerateButton: "Tạo lại",
       regenerating: "Đang tạo...",
       overviewTitle: "Tổng quan",
@@ -668,6 +680,12 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
     },
     summary: {
       templateLabel: "Template:",
+      languageLabel: "Language:",
+      languageOptions: {
+        auto: "Auto",
+        vi: "Vietnamese",
+        en: "English",
+      },
       regenerateButton: "Regenerate",
       regenerating: "Generating...",
       overviewTitle: "Overview",

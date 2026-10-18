@@ -2,6 +2,7 @@ import type {
   ApiResponse,
   ChatMessage,
   MeetingSummary,
+  SummaryOutputLanguage,
   SummaryTemplateId,
   SupportedLocale,
   TranscriptSegment,
@@ -181,6 +182,24 @@ export async function callOpenRouterChat(params: {
   };
 }
 
+function detectTranscriptLocale(
+  segments: TranscriptSegment[],
+  fallbackLocale: SupportedLocale
+): SupportedLocale {
+  const text = segments.map((s) => s.text).join(" ");
+  if (
+    /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i.test(
+      text
+    )
+  ) {
+    return "vi";
+  }
+  if (/[a-z]/i.test(text)) {
+    return "en";
+  }
+  return fallbackLocale;
+}
+
 export async function generateSummaryWithFallback(params: {
   apiKey: string;
   model: string;
@@ -189,6 +208,7 @@ export async function generateSummaryWithFallback(params: {
   templateId: SummaryTemplateId;
   segments: TranscriptSegment[];
   locale: SupportedLocale;
+  outputLanguage?: SummaryOutputLanguage;
 }): Promise<ApiResponse<MeetingSummary>> {
   const errors = getDictionary(params.locale).errors;
   const meetingId = params.meetingId.trim();
@@ -210,9 +230,16 @@ export async function generateSummaryWithFallback(params: {
     templateId: params.templateId,
     transcriptText: formattedTranscript,
     locale: params.locale,
+    outputLanguage: params.outputLanguage,
   });
 
   const inputTokens = estimateTokenCount(prompt);
+  const defaultsLocale =
+    params.outputLanguage === "vi" || params.outputLanguage === "en"
+      ? params.outputLanguage
+      : params.outputLanguage === "auto"
+        ? detectTranscriptLocale(params.segments, params.locale)
+        : params.locale;
 
   try {
     const result = await callOpenRouterChat({
@@ -232,7 +259,7 @@ export async function generateSummaryWithFallback(params: {
         templateId: params.templateId,
         providerUsed: `OpenRouter (${result.model})`,
         inputTokens,
-        locale: params.locale,
+        locale: defaultsLocale,
       }),
     };
   } catch (error) {
@@ -248,6 +275,7 @@ export async function generateSummaryWithFallback(params: {
         templateId: params.templateId,
         segments: params.segments,
         locale: params.locale,
+        outputLanguage: params.outputLanguage,
         inputTokens: estimatedTokens,
       }),
     };
@@ -332,6 +360,7 @@ export function synthesizeSmartOfflineSummary(params: {
   templateId: SummaryTemplateId;
   segments: TranscriptSegment[];
   locale: "vi" | "en";
+  outputLanguage?: SummaryOutputLanguage;
   inputTokens: number;
 }): MeetingSummary {
   const speakers = Array.from(
@@ -342,7 +371,11 @@ export function synthesizeSmartOfflineSummary(params: {
     (s) => s.channel === "system_remote"
   );
 
-  const isVi = params.locale === "vi";
+  const targetLocale =
+    params.outputLanguage === "vi" || params.outputLanguage === "en"
+      ? params.outputLanguage
+      : detectTranscriptLocale(params.segments, params.locale);
+  const isVi = targetLocale === "vi";
   const templatePrefix: Record<SummaryTemplateId, string> = isVi
     ? {
         general: "[Biên bản Tổng hợp]",

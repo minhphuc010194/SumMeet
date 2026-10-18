@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDictionary } from "@/i18n/dictionaries";
 import {
   buildAskFredChatPrompt,
+  buildMeetingSummaryPrompt,
   PROMPT_VERSION,
   sanitizePromptInput,
 } from "@/services/ai/prompts";
@@ -39,6 +40,20 @@ const MOCK_SEGMENTS: TranscriptSegment[] = [
     startMs: 13000,
     endMs: 20000,
     confidence: 0.98,
+  },
+];
+
+const MOCK_ENGLISH_SEGMENTS: TranscriptSegment[] = [
+  {
+    id: "seg-en-1",
+    meetingId: "mtg-test-en",
+    speakerId: "spk_user_me",
+    speakerName: "Alex",
+    channel: "mic_user",
+    text: "We agreed to ship the release by Friday and review the audio pipeline.",
+    startMs: 5000,
+    endMs: 12000,
+    confidence: 0.99,
   },
 ];
 
@@ -115,6 +130,54 @@ describe("Prompt Security & Token Budget", () => {
     expect(result.wasTruncated).toBe(true);
     expect(result.formattedTranscript).toContain(
       "[TRANSCRIPT MIDDLE TRUNCATED FOR TOKEN BUDGET]"
+    );
+  });
+
+  it("instructs the model to detect the transcript language when outputLanguage is auto or omitted", () => {
+    const omittedPrompt = buildMeetingSummaryPrompt({
+      meetingTitle: "Sprint Sync",
+      templateId: "general",
+      transcriptText: "[00:05] (LOCAL_MIC) Alex: Let's ship on Friday.",
+      locale: "vi",
+    });
+    const autoPrompt = buildMeetingSummaryPrompt({
+      meetingTitle: "Sprint Sync",
+      templateId: "general",
+      transcriptText: "[00:05] (LOCAL_MIC) Alex: Let's ship on Friday.",
+      locale: "vi",
+      outputLanguage: "auto",
+    });
+
+    expect(omittedPrompt).toContain(
+      "Detect the primary language of <MEETING_TRANSCRIPT_DATA>"
+    );
+    expect(omittedPrompt).not.toContain("in natural Vietnamese");
+    expect(autoPrompt).toContain(
+      "Detect the primary language of <MEETING_TRANSCRIPT_DATA>"
+    );
+  });
+
+  it("forces Vietnamese or English in buildMeetingSummaryPrompt when outputLanguage is vi or en", () => {
+    const viPrompt = buildMeetingSummaryPrompt({
+      meetingTitle: "Sprint Sync",
+      templateId: "general",
+      transcriptText: "[00:05] (LOCAL_MIC) Alex: Let's ship on Friday.",
+      locale: "en",
+      outputLanguage: "vi",
+    });
+    const enPrompt = buildMeetingSummaryPrompt({
+      meetingTitle: "Họp tuần",
+      templateId: "general",
+      transcriptText: "[00:05] (LOCAL_MIC) Nam: Chốt lịch thứ Sáu.",
+      locale: "vi",
+      outputLanguage: "en",
+    });
+
+    expect(viPrompt).toContain(
+      "Write the summary, action items, key decisions, and outline in natural Vietnamese."
+    );
+    expect(enPrompt).toContain(
+      "Write the summary, action items, key decisions, and outline in clear English."
     );
   });
 });
@@ -199,6 +262,68 @@ describe("OpenRouter summary with offline fallback", () => {
       expect(result.data?.keywords).toEqual(defaults.keywords);
     }
   );
+
+  it("uses the detected transcript language for summary defaults and offline fallback when outputLanguage is auto", async () => {
+    const enDefaults = getDictionary("en").summaryDefaults;
+    fetchMock.mockResolvedValueOnce(
+      completionResponse(JSON.stringify({ actionItems: [{}] }))
+    );
+
+    const normalized = await generateSummaryWithFallback({
+      ...SUMMARY_PARAMS,
+      segments: MOCK_ENGLISH_SEGMENTS,
+      locale: "vi",
+      outputLanguage: "auto",
+    });
+
+    expect(requestBody(fetchMock).messages[0].content).toContain(
+      "Detect the primary language of <MEETING_TRANSCRIPT_DATA>"
+    );
+    expect(normalized.data?.overview).toBe(enDefaults.overview);
+    expect(normalized.data?.actionItems[0].dueDate).toBe(enDefaults.dueDate);
+
+    fetchMock.mockResolvedValueOnce(new Response("upstream down", { status: 503 }));
+    const offlineEn = await generateSummaryWithFallback({
+      ...SUMMARY_PARAMS,
+      segments: MOCK_ENGLISH_SEGMENTS,
+      locale: "vi",
+      outputLanguage: "auto",
+    });
+
+    expect(offlineEn.data?.overview).toContain("[Engineering Standup & Sprint Sync]");
+    expect(offlineEn.data?.actionItems[0].dueDate).toBe("This Week");
+  });
+
+  it("forces the selected outputLanguage for prompt directives, defaults, and offline fallback regardless of UI locale or transcript language", async () => {
+    const enDefaults = getDictionary("en").summaryDefaults;
+    const viDefaults = getDictionary("vi").summaryDefaults;
+    fetchMock.mockResolvedValueOnce(
+      completionResponse(JSON.stringify({ actionItems: [{}] }))
+    );
+
+    const forcedEn = await generateSummaryWithFallback({
+      ...SUMMARY_PARAMS,
+      segments: MOCK_SEGMENTS,
+      locale: "vi",
+      outputLanguage: "en",
+    });
+
+    expect(requestBody(fetchMock).messages[0].content).toContain(
+      "Write the summary, action items, key decisions, and outline in clear English."
+    );
+    expect(forcedEn.data?.overview).toBe(enDefaults.overview);
+
+    fetchMock.mockResolvedValueOnce(new Response("upstream down", { status: 503 }));
+    const forcedViOffline = await generateSummaryWithFallback({
+      ...SUMMARY_PARAMS,
+      segments: MOCK_ENGLISH_SEGMENTS,
+      locale: "en",
+      outputLanguage: "vi",
+    });
+
+    expect(forcedViOffline.data?.overview).toContain("[Báo cáo Kỹ thuật & Sprint]");
+    expect(forcedViOffline.data?.actionItems[0].dueDate).toBe(viDefaults.dueDate);
+  });
 
   it("uses the default model when the configured model is blank", async () => {
     fetchMock.mockResolvedValue(completionResponse(JSON.stringify({ overview: "ok" })));

@@ -1978,11 +1978,16 @@ describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", (
     const templateSelect = screen.getByLabelText(
       dictEn.summary.templateLabel
     ) as HTMLSelectElement;
+    const languageSelect = screen.getByLabelText(
+      dictEn.summary.languageLabel
+    ) as HTMLSelectElement;
     const regenerateBtn = screen.getByRole("button", {
       name: dictEn.summary.regenerateButton,
     }) as HTMLButtonElement;
 
     expect(templateSelect.disabled).toBe(false);
+    expect(languageSelect.disabled).toBe(false);
+    expect(languageSelect.value).toBe("auto");
     expect(regenerateBtn.querySelector(".animate-spin")).toBeNull();
 
     fireEvent.click(regenerateBtn);
@@ -1994,6 +1999,7 @@ describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", (
     expect(busyBtn.getAttribute("aria-busy")).toBe("true");
     expect(busyBtn.querySelector(".animate-spin")).not.toBeNull();
     expect(templateSelect.disabled).toBe(true);
+    expect(languageSelect.disabled).toBe(true);
 
     resolveSummary({
       success: true,
@@ -2009,6 +2015,86 @@ describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", (
     expect(busyBtn.getAttribute("aria-busy")).toBe("false");
     expect(busyBtn.querySelector(".animate-spin")).toBeNull();
     expect(templateSelect.disabled).toBe(false);
+    expect(languageSelect.disabled).toBe(false);
+    expect(summaryMock.mock.calls[0][0].outputLanguage).toBe("auto");
+  });
+
+  it("passes the selected summary output language (auto, vi, en) when regenerating or switching templates", async () => {
+    const meeting = useMeetingStore.getState().createMeetingSession({
+      title: "Language Selection Meeting",
+      audioDeviceUsed: "Mic",
+      isHeadphoneSession: false,
+      locale: "vi",
+    });
+    useMeetingStore
+      .getState()
+      .appendTranscriptSegment(meeting.id, {
+        ...segmentFor(meeting.id),
+        channel: "system_remote",
+        startMs: 0,
+        endMs: 120_000,
+      });
+    useMeetingStore.getState().completeMeetingRecording(meeting.id, 120);
+    summaryMock.mockResolvedValue({
+      success: true,
+      data: summaryFor(meeting.id),
+    });
+
+    render(
+      <SmartSummaryPanel
+        meeting={useMeetingStore.getState().meetings[0]}
+        dict={dict}
+        locale="vi"
+        onToast={vi.fn()}
+      />
+    );
+
+    const languageSelect = screen.getByLabelText(
+      dict.summary.languageLabel
+    ) as HTMLSelectElement;
+    const templateSelect = screen.getByLabelText(
+      dict.summary.templateLabel
+    ) as HTMLSelectElement;
+    const regenerateBtn = screen.getByRole("button", {
+      name: dict.summary.regenerateButton,
+    });
+
+    expect(
+      within(languageSelect)
+        .getAllByRole("option")
+        .map((opt) => (opt as HTMLOptionElement).value)
+    ).toEqual(["auto", "vi", "en"]);
+    expect(languageSelect.value).toBe("auto");
+
+    fireEvent.change(languageSelect, { target: { value: "en" } });
+    fireEvent.click(regenerateBtn);
+
+    await waitFor(() => expect(summaryMock).toHaveBeenCalledTimes(1));
+    expect(summaryMock.mock.calls[0][0]).toMatchObject({
+      meetingId: meeting.id,
+      locale: "vi",
+      outputLanguage: "en",
+    });
+
+    fireEvent.change(languageSelect, { target: { value: "vi" } });
+    fireEvent.change(templateSelect, { target: { value: "sales" } });
+
+    await waitFor(() => expect(summaryMock).toHaveBeenCalledTimes(2));
+    expect(summaryMock.mock.calls[1][0]).toMatchObject({
+      meetingId: meeting.id,
+      templateId: "sales",
+      outputLanguage: "vi",
+    });
+  });
+
+  it("passes outputLanguage auto when RecordingControlBar summarizes a finished recording", async () => {
+    tailMock.mockResolvedValue({ success: true });
+
+    await recoverAndStopRecording();
+
+    expect(summaryMock).toHaveBeenCalledTimes(1);
+    expect(summaryMock.mock.calls[0][0].outputLanguage).toBe("auto");
   });
 });
+
 
