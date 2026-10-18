@@ -1937,8 +1937,78 @@ describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", (
       recoveredSysSegment,
     ]);
   });
+
+  it("shows a spinning indicator and disables the template selector while regenerating", async () => {
+    const meeting = useMeetingStore.getState().createMeetingSession({
+      title: "Spinner Meeting",
+      audioDeviceUsed: "Mic",
+      isHeadphoneSession: false,
+      locale: "en",
+    });
+    useMeetingStore
+      .getState()
+      .appendTranscriptSegment(meeting.id, {
+        ...segmentFor(meeting.id),
+        channel: "system_remote",
+        startMs: 0,
+        endMs: 120_000,
+      });
+    useMeetingStore.getState().completeMeetingRecording(meeting.id, 120);
+
+    let resolveSummary!: (value: {
+      success: boolean;
+      data: ReturnType<typeof summaryFor>;
+    }) => void;
+    summaryMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSummary = resolve;
+        })
+    );
+
+    render(
+      <SmartSummaryPanel
+        meeting={useMeetingStore.getState().meetings[0]}
+        dict={dictEn}
+        locale="en"
+        onToast={vi.fn()}
+      />
+    );
+
+    const templateSelect = screen.getByLabelText(
+      dictEn.summary.templateLabel
+    ) as HTMLSelectElement;
+    const regenerateBtn = screen.getByRole("button", {
+      name: dictEn.summary.regenerateButton,
+    }) as HTMLButtonElement;
+
+    expect(templateSelect.disabled).toBe(false);
+    expect(regenerateBtn.querySelector(".animate-spin")).toBeNull();
+
+    fireEvent.click(regenerateBtn);
+
+    const busyBtn = screen.getByRole("button", {
+      name: dictEn.summary.regenerating,
+    }) as HTMLButtonElement;
+    expect(busyBtn.disabled).toBe(true);
+    expect(busyBtn.getAttribute("aria-busy")).toBe("true");
+    expect(busyBtn.querySelector(".animate-spin")).not.toBeNull();
+    expect(templateSelect.disabled).toBe(true);
+
+    resolveSummary({
+      success: true,
+      data: summaryFor(meeting.id),
+    });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: dictEn.summary.regenerateButton })
+      ).toBeTruthy()
+    );
+    expect(busyBtn.disabled).toBe(false);
+    expect(busyBtn.getAttribute("aria-busy")).toBe("false");
+    expect(busyBtn.querySelector(".animate-spin")).toBeNull();
+    expect(templateSelect.disabled).toBe(false);
+  });
 });
-
-
-
 

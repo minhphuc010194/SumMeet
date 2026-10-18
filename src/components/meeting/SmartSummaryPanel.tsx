@@ -8,6 +8,7 @@ import {
   Cpu,
   FileText,
   ListChecks,
+  Loader2,
   Sparkles,
   Tag,
   Target,
@@ -200,12 +201,13 @@ export function SmartSummaryPanel({
           <select
             id="summary-template-select"
             value={selectedTemplate}
+            disabled={isRegenerating}
             onChange={(e) => {
               const nextTemplate = e.target.value as SummaryTemplateId;
               setSelectedTemplate(nextTemplate);
               handleRegenerateSummary(nextTemplate);
             }}
-            className="h-7 rounded-lg border border-slate-700 bg-slate-950 px-2.5 text-xs font-medium text-slate-100 focus:border-orange-500 focus:outline-none"
+            className="h-7 rounded-lg border border-slate-700 bg-slate-950 px-2.5 text-xs font-medium text-slate-100 focus:border-orange-500 focus:outline-none disabled:opacity-50"
           >
             <option value="general">{dict.summary.templates.general}</option>
             <option value="sales">{dict.summary.templates.sales}</option>
@@ -223,10 +225,15 @@ export function SmartSummaryPanel({
           <button
             type="button"
             disabled={isRegenerating}
+            aria-busy={isRegenerating}
             onClick={() => handleRegenerateSummary()}
             className="inline-flex h-7 items-center gap-1 rounded-lg bg-orange-600 px-2.5 text-xs font-semibold text-white transition hover:bg-orange-500 disabled:opacity-50"
           >
-            <Sparkles className="h-3 w-3" />
+            {isRegenerating ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3" />
+            )}
             {isRegenerating
               ? dict.summary.regenerating
               : dict.summary.regenerateButton}
