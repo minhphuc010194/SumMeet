@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Circle,
   Clock,
-  Cpu,
   FileText,
   ListChecks,
   Loader2,
@@ -221,11 +220,6 @@ export function SmartSummaryPanel({
         </div>
 
         <div className="flex items-center gap-1.5">
-          <span className="inline-flex h-7 items-center gap-1 rounded-lg border border-slate-700/80 bg-slate-950 px-2 text-[11px] text-slate-400">
-            <Cpu className="h-3 w-3 text-orange-400" />
-            {dict.summary.providerBadge} {summary.providerUsed}
-          </span>
-
           <select
             id="summary-language-select"
             aria-label={dict.summary.languageLabel}
