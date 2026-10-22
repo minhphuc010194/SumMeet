@@ -253,6 +253,25 @@ describe("Recording control bar after a reload", () => {
     expect(tailMock.mock.calls[0][0]).not.toHaveProperty("track");
   });
 
+  it("completes the meeting and toasts recordingDone without rendering the duplicate recordingResult quick-view", async () => {
+    tailMock.mockResolvedValue({ success: true });
+
+    const { meeting, onToast } = await recoverAndStopRecording();
+    const startButton = (await screen.findByRole("button", {
+      name: dict.recorder.startRecording,
+    })) as HTMLButtonElement;
+    await waitFor(() => expect(startButton.disabled).toBe(false));
+
+    const saved = useMeetingStore
+      .getState()
+      .meetings.find((m) => m.id === meeting.id);
+    expect(saved?.status).toBe("completed");
+    expect(onToast).toHaveBeenCalledWith(dict.recorder.recordingDone);
+    expect(screen.queryByText(dict.recordingResult.summaryTitle)).toBeNull();
+    expect(screen.queryByText(dict.recordingResult.overviewHeading)).toBeNull();
+    expect(screen.queryByTitle(dict.recordingResult.closeQuickView)).toBeNull();
+  });
+
   it("drains the mic and system tails from their own persisted offsets after a reload", async () => {
     tailMock.mockResolvedValue({ success: true });
 
