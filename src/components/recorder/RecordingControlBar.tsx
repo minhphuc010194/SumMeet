@@ -3,26 +3,18 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import {
-  CheckCircle2,
-  FolderOpen,
-  GripHorizontal,
-  GripVertical,
   Headphones,
   Loader2,
-  Maximize2,
   Mic,
-  Minimize2,
   PhoneCall,
   Square,
   Upload,
   Volume2,
-  X,
 } from "lucide-react";
 import type { Dictionary } from "@/i18n/dictionaries";
 import type {
   AudioDeviceItem,
   DualStreamStatus,
-  MeetingSummary,
   SupportedLocale,
 } from "@/types/meeting";
 import { generateSummaryWithFallback } from "@/services/ai/provider-registry";
@@ -84,16 +76,6 @@ function SignalMeter({ label, level }: { label: string; level: number }) {
   );
 }
 
-interface LatestRecordingResultSummary {
-  meetingId: string;
-  title: string;
-  savedFilePath?: string;
-  audioUrl?: string;
-  transcriptPreview: string[];
-  executiveSummary: string;
-  fullSummary?: MeetingSummary;
-}
-
 export function RecordingControlBar({
   dict,
   locale,
@@ -127,16 +109,11 @@ export function RecordingControlBar({
   const [hasSystemAudio, setHasSystemAudio] = useState(false);
   const [processingStepText, setProcessingStepText] = useState("");
   const [spokenCount, setSpokenCount] = useState(0);
-  const [latestResult, setLatestResult] =
-    useState<LatestRecordingResultSummary | null>(null);
-  const [resultBoxHeight, setResultBoxHeight] = useState<number>(420);
-  const [resultSplitRatio, setResultSplitRatio] = useState<number>(50);
   const [isCallSuggestionVisible, setIsCallSuggestionVisible] = useState(false);
   const [detectedCallApp, setDetectedCallApp] = useState<string | null>(null);
   const isCallDetectionEnabled = useMeetingStore(
     (state) => state.settings.callDetectionEnabled
   );
-  const resultSplitContainerRef = useRef<HTMLDivElement | null>(null);
 
   const activeMeetingIdRef = useRef<string | null>(null);
   const statusTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -427,7 +404,6 @@ export function RecordingControlBar({
     durationSec: number;
     doneMessage: string;
     audioUrl?: string;
-    savedFilePath?: string;
   }) => {
     const { openRouterKey, settings, meetings } = useMeetingStore.getState();
     const meeting = meetings.find((m) => m.id === params.meetingId);
@@ -468,17 +444,6 @@ export function RecordingControlBar({
       return;
     }
 
-    setLatestResult({
-      meetingId: meeting.id,
-      title: meeting.title,
-      savedFilePath: params.savedFilePath,
-      audioUrl: params.audioUrl,
-      transcriptPreview: meeting.segments.map(
-        (s) => `${s.speakerName}: ${s.text}`
-      ),
-      executiveSummary: summary.data.overview,
-      fullSummary: summary.data,
-    });
     onToast(params.doneMessage);
   };
 
@@ -487,7 +452,6 @@ export function RecordingControlBar({
   );
 
   const handleStartRecording = async () => {
-    setLatestResult(null);
     const timeLabel = new Date().toLocaleTimeString(
       locale === "vi" ? "vi-VN" : "en-US",
       { hour: "2-digit", minute: "2-digit", second: "2-digit" }
@@ -583,7 +547,6 @@ export function RecordingControlBar({
         durationSec: Math.max(1, Math.round(stopped.data.durationSec)),
         doneMessage: dict.recorder.recordingDone,
         audioUrl: convertFileSrc(stopped.data.wavPath),
-        savedFilePath: stopped.data.wavPath,
       });
     } catch (error) {
       console.error("[RecordingControlBar] Stop & summarize error:", {
@@ -603,7 +566,6 @@ export function RecordingControlBar({
     const file = event.target.files?.[0];
     if (!file) return;
 
-    setLatestResult(null);
     setIsProcessingResult(true);
     setProcessingStepText(
       dict.recorder.uploadProcessing.replace("{name}", file.name)
@@ -664,49 +626,6 @@ export function RecordingControlBar({
     return `${mins}:${secs}`;
   };
 
-  const handleStartHorizontalResize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const container = resultSplitContainerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      const relativeX = moveEvent.clientX - rect.left;
-      const pct = Math.min(78, Math.max(22, (relativeX / rect.width) * 100));
-      setResultSplitRatio(Math.round(pct));
-    };
-
-    const onMouseUp = () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
-
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-  };
-
-  const handleStartVerticalResize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const startY = e.clientY;
-    const startHeight = resultBoxHeight;
-
-    const onMouseMove = (moveEvent: MouseEvent) => {
-      const deltaY = moveEvent.clientY - startY;
-      const nextHeight = Math.min(920, Math.max(220, startHeight + deltaY));
-      setResultBoxHeight(nextHeight);
-    };
-
-    const onMouseUp = () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
-
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-  };
-
-  const result = dict.recordingResult;
-  const hasLatestResult = latestResult !== null;
   const isStartBlocked =
     isProcessingResult || isRecoveryPending || isDeviceListPending;
   const isSystemAudioToggleDisabled =
@@ -951,294 +870,6 @@ export function RecordingControlBar({
             <p className="text-[11px] text-orange-300">
               {dict.recorder.processingHint}
             </p>
-          </div>
-        </div>
-      )}
-
-      {hasLatestResult && isCaptureIdle && (
-        <div className="mt-4 space-y-3 rounded-2xl border border-emerald-500/50 bg-emerald-950/25 p-4 shadow-lg">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-400" />
-              <span className="text-base font-bold text-slate-50">
-                {result.title.replace("{title}", latestResult.title)}
-              </span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {latestResult.audioUrl && (
-                <audio
-                  controls
-                  src={latestResult.audioUrl}
-                  className="h-8 max-w-[260px] rounded-lg"
-                />
-              )}
-
-              <div className="flex items-center gap-1 rounded-lg border border-slate-700/80 bg-slate-900/90 p-1 text-[11px]">
-                <button
-                  type="button"
-                  onClick={() => setResultBoxHeight(320)}
-                  title={result.heightMediumTitle}
-                  className={`inline-flex items-center gap-1 rounded px-2 py-0.5 font-semibold transition ${
-                    resultBoxHeight <= 350
-                      ? "bg-orange-600 text-white"
-                      : "text-slate-300 hover:text-slate-50"
-                  }`}
-                >
-                  <Minimize2 className="h-3 w-3" />
-                  {result.heightMedium}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setResultBoxHeight(540)}
-                  title={result.heightLargeTitle}
-                  className={`inline-flex items-center gap-1 rounded px-2 py-0.5 font-semibold transition ${
-                    resultBoxHeight > 350 && resultBoxHeight < 700
-                      ? "bg-orange-600 text-white"
-                      : "text-slate-300 hover:text-slate-50"
-                  }`}
-                >
-                  <Maximize2 className="h-3 w-3" />
-                  {result.heightLarge}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setResultBoxHeight(780)}
-                  title={result.heightMaxTitle}
-                  className={`inline-flex items-center gap-1 rounded px-2 py-0.5 font-semibold transition ${
-                    resultBoxHeight >= 700
-                      ? "bg-orange-600 text-white"
-                      : "text-slate-300 hover:text-slate-50"
-                  }`}
-                >
-                  {result.heightMax}
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setLatestResult(null)}
-                title={result.closeQuickView}
-                className="rounded-lg border border-slate-700 bg-slate-900 p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-50"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-300">
-            {latestResult.savedFilePath && (
-              <div className="flex items-center gap-2">
-                <FolderOpen className="h-4 w-4 shrink-0 text-amber-400" />
-                <span>
-                  {result.savedAudioAt}{" "}
-                  <code className="rounded bg-slate-800 px-1.5 py-0.5 text-amber-300">
-                    {latestResult.savedFilePath}
-                  </code>
-                </span>
-              </div>
-            )}
-
-            <span className="text-[11px] text-slate-400">
-              {result.resizeHint}
-            </span>
-          </div>
-
-          <div
-            ref={resultSplitContainerRef}
-            className="flex flex-col gap-2 lg:flex-row lg:items-stretch lg:gap-0"
-          >
-            <div
-              style={{
-                width:
-                  typeof window !== "undefined" && window.innerWidth < 1024
-                    ? "100%"
-                    : `${resultSplitRatio}%`,
-              }}
-              className="flex min-w-0 flex-col rounded-xl border border-slate-800 bg-slate-950/90 p-4"
-            >
-              <div className="mb-2.5 flex items-center justify-between border-b border-slate-800/80 pb-2">
-                <p className="text-sm font-bold text-orange-300">
-                  {result.transcriptTitle.replace(
-                    "{count}",
-                    String(latestResult.transcriptPreview.length)
-                  )}
-                </p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setResultSplitRatio((r) => (r === 65 ? 50 : 65))
-                  }
-                  className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-orange-300 hover:bg-orange-600 hover:text-white"
-                >
-                  {resultSplitRatio > 55 ? result.resetSplit : result.widenColumn}
-                </button>
-              </div>
-
-              <div
-                style={{ height: `${resultBoxHeight}px` }}
-                className="min-h-[200px] resize-y space-y-2.5 overflow-y-auto pr-2 text-sm leading-relaxed text-slate-100"
-              >
-                {latestResult.transcriptPreview.map((line, i) => {
-                  const colonIdx = line.indexOf(":");
-                  const speaker =
-                    colonIdx > 0
-                      ? line.slice(0, colonIdx)
-                      : result.defaultSpeaker;
-                  const content =
-                    colonIdx > 0 ? line.slice(colonIdx + 1).trim() : line;
-                  return (
-                    <div
-                      key={i}
-                      className="rounded-lg border border-slate-800/70 bg-slate-900/60 p-3"
-                    >
-                      <span className="mb-1 inline-block rounded bg-orange-500/20 px-2 py-0.5 text-xs font-bold text-orange-300">
-                        {speaker}
-                      </span>
-                      <p className="text-sm leading-relaxed text-slate-100">
-                        {content}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              onMouseDown={handleStartHorizontalResize}
-              title={result.resizeColumnsTitle}
-              className="group hidden w-3 shrink-0 cursor-col-resize items-center justify-center lg:flex"
-            >
-              <div className="flex h-16 w-1.5 items-center justify-center rounded-full bg-slate-700 transition group-hover:bg-orange-400">
-                <GripVertical className="h-4 w-4 text-slate-300 opacity-70 group-hover:opacity-100" />
-              </div>
-            </div>
-
-            <div
-              style={{
-                width:
-                  typeof window !== "undefined" && window.innerWidth < 1024
-                    ? "100%"
-                    : `${100 - resultSplitRatio}%`,
-              }}
-              className="flex min-w-0 flex-col rounded-xl border border-slate-800 bg-slate-950/90 p-4"
-            >
-              <div className="mb-2.5 flex items-center justify-between border-b border-slate-800/80 pb-2">
-                <p className="text-sm font-bold text-emerald-300">
-                  {result.summaryTitle}
-                </p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setResultSplitRatio((r) => (r === 35 ? 50 : 35))
-                  }
-                  className="rounded bg-slate-800 px-2 py-0.5 text-[11px] font-medium text-emerald-300 hover:bg-emerald-600 hover:text-white"
-                >
-                  {resultSplitRatio < 45 ? result.resetSplit : result.widenColumn}
-                </button>
-              </div>
-
-              <div
-                style={{ height: `${resultBoxHeight}px` }}
-                className="min-h-[200px] resize-y space-y-4 overflow-y-auto pr-2 text-sm leading-relaxed text-slate-100"
-              >
-                <div className="rounded-lg border border-emerald-500/20 bg-emerald-950/20 p-3">
-                  <p className="mb-1 text-xs font-bold tracking-wider text-emerald-400 uppercase">
-                    {result.overviewHeading}
-                  </p>
-                  <p className="text-sm leading-relaxed text-slate-100">
-                    {latestResult.executiveSummary}
-                  </p>
-                </div>
-
-                {latestResult.fullSummary?.keyDecisions &&
-                  latestResult.fullSummary.keyDecisions.length > 0 && (
-                    <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-                      <p className="mb-1.5 text-xs font-bold tracking-wider text-amber-400 uppercase">
-                        {result.keyTakeawaysHeading}
-                      </p>
-                      <ul className="space-y-1.5">
-                        {latestResult.fullSummary.keyDecisions.map(
-                          (dec, idx) => (
-                            <li
-                              key={idx}
-                              className="flex items-start gap-2 text-sm text-slate-200"
-                            >
-                              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400" />
-                              <span>{dec}</span>
-                            </li>
-                          )
-                        )}
-                      </ul>
-                    </div>
-                  )}
-
-                {latestResult.fullSummary?.outline &&
-                  latestResult.fullSummary.outline.length > 0 && (
-                    <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-                      <p className="mb-2 text-xs font-bold tracking-wider text-orange-400 uppercase">
-                        {result.outlineHeading}
-                      </p>
-                      <div className="space-y-2.5">
-                        {latestResult.fullSummary.outline.map((sec) => (
-                          <div
-                            key={sec.id}
-                            className="rounded-lg border border-slate-800/80 bg-slate-950/60 p-2.5"
-                          >
-                            <p className="text-xs font-bold text-slate-50">
-                              {sec.title}
-                            </p>
-                            <ul className="mt-1 space-y-1">
-                              {sec.bullets.map((b, idx) => (
-                                <li
-                                  key={idx}
-                                  className="text-sm text-slate-300"
-                                >
-                                  • {b}
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                {latestResult.fullSummary?.actionItems &&
-                  latestResult.fullSummary.actionItems.length > 0 && (
-                    <div className="rounded-lg border border-slate-800 bg-slate-900/60 p-3">
-                      <p className="mb-1.5 text-xs font-bold tracking-wider text-orange-400 uppercase">
-                        {result.actionItemsHeading}
-                      </p>
-                      <ul className="space-y-1.5">
-                        {latestResult.fullSummary.actionItems.map((item) => (
-                          <li
-                            key={item.id}
-                            className="rounded bg-slate-950/70 px-2.5 py-1.5 text-sm text-slate-200"
-                          >
-                            • {item.task}{" "}
-                            <span className="text-xs text-orange-300">
-                              (@{item.assignee})
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-              </div>
-            </div>
-          </div>
-
-          <div
-            role="separator"
-            aria-orientation="horizontal"
-            onMouseDown={handleStartVerticalResize}
-            title={result.resizeHeightTitle}
-            className="group flex h-4 w-full cursor-row-resize items-center justify-center rounded-lg border border-slate-800/70 bg-slate-900/80 transition hover:border-orange-500/50 hover:bg-orange-950/50"
-          >
-            <GripHorizontal className="h-4 w-4 text-slate-400 group-hover:text-orange-300" />
           </div>
         </div>
       )}
