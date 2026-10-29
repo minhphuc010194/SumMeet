@@ -128,9 +128,45 @@ describe("Prompt Security & Token Budget", () => {
     const result = fitTranscriptToTokenBudget(manySegments, 250);
 
     expect(result.wasTruncated).toBe(true);
+    expect(result.estimatedTokens).toBeLessThanOrEqual(250);
+    expect(result.formattedTranscript).toContain("statement number 0");
+    expect(result.formattedTranscript).toContain("statement number 39");
     expect(result.formattedTranscript).toContain(
       "[TRANSCRIPT MIDDLE TRUNCATED FOR TOKEN BUDGET]"
     );
+  });
+
+  it("keeps a full 1-hour meeting transcript untruncated in both token budget and summary prompt", () => {
+    const oneHourSegments: TranscriptSegment[] = Array.from(
+      { length: 500 },
+      (_, idx) => ({
+        id: `seg-1h-${idx}`,
+        meetingId: "mtg-1h",
+        speakerId: idx % 2 === 0 ? "spk_user_me" : "spk_remote_1",
+        speakerName: idx % 2 === 0 ? "Bạn (Mic)" : "Anh Tài",
+        channel: idx % 2 === 0 ? "mic_user" : "system_remote",
+        text: `Trao đổi chi tiết mục số ${idx} về tìm kiếm nội dung video YouTube và lộ trình hoàn thành dự án.`,
+        startMs: idx * 7200,
+        endMs: (idx + 1) * 7200,
+        confidence: 0.99,
+      })
+    );
+
+    const budgeted = fitTranscriptToTokenBudget(oneHourSegments);
+    const prompt = buildMeetingSummaryPrompt({
+      meetingTitle: "Họp 1 giờ",
+      templateId: "general",
+      transcriptText: budgeted.formattedTranscript,
+      locale: "vi",
+    });
+
+    expect(budgeted.wasTruncated).toBe(false);
+    expect(prompt).not.toContain("[TRANSCRIPT MIDDLE TRUNCATED FOR TOKEN BUDGET]");
+    expect(prompt).toContain("mục số 0 ");
+    expect(prompt).toContain("mục số 250 ");
+    expect(prompt).toContain("mục số 499 ");
+    expect(prompt).toContain("2-4 well-structured paragraphs");
+    expect(prompt).toContain("((MM * 60 + SS) * 1000)");
   });
 
   it("instructs the model to detect the transcript language when outputLanguage is auto or omitted", () => {

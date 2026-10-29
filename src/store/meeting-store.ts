@@ -18,6 +18,7 @@ import {
   getStoredOpenRouterKey,
   storeOpenRouterKey,
 } from "@/services/ai/openrouter-key";
+import { PROMPT_VERSION } from "@/services/ai/prompts";
 import {
   DEFAULT_OPENROUTER_MODEL,
   callOpenRouterChat,
@@ -181,7 +182,7 @@ export const useMeetingStore = create<MeetingStoreState>()(
             ],
             sentiment: "focused",
             providerUsed: dict.session.liveProvider,
-            promptVersion: "v1.2.0",
+            promptVersion: PROMPT_VERSION,
             updatedAt: now,
           },
           chatMessages: [],

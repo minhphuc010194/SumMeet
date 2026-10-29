@@ -247,7 +247,7 @@ export async function generateSummaryWithFallback(params: {
       model: params.model,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
-      timeoutMs: 60000,
+      timeoutMs: 90000,
       providerName: "OpenRouter-Summary",
     });
     const parsed = JSON.parse(stripJsonCodeFences(result.content));

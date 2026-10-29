@@ -457,10 +457,14 @@ export function RecordingControlBar({
       { hour: "2-digit", minute: "2-digit", second: "2-digit" }
     );
 
+    const wantsSystemAudio = includeSystemAudio && systemAudioSupported;
     const newMeeting = createMeetingSession({
       title: dict.recorder.sessionTitle.replace("{time}", timeLabel),
       audioDeviceUsed: preferredInput?.name ?? status.activeInputDeviceName,
       isHeadphoneSession: status.isHeadphoneOrAirPodsActive,
+      participants: wantsSystemAudio
+        ? [dict.transcript.defaultMicSpeaker, dict.session.systemAudioParticipant]
+        : [dict.transcript.defaultMicSpeaker],
       locale,
     });
 
@@ -469,7 +473,7 @@ export function RecordingControlBar({
     const started = await startMicRecording({
       meetingId: newMeeting.id,
       inputDeviceId: preferredInput?.id ?? null,
-      includeSystemAudio: includeSystemAudio && systemAudioSupported,
+      includeSystemAudio: wantsSystemAudio,
       locale,
     });
     if (!started.success || !started.data) {
@@ -630,6 +634,10 @@ export function RecordingControlBar({
     isProcessingResult || isRecoveryPending || isDeviceListPending;
   const isSystemAudioToggleDisabled =
     status.isRecording || isStartBlocked || !systemAudioSupported;
+  const isHeadphoneWithoutSystemAudio =
+    status.isHeadphoneOrAirPodsActive &&
+    systemAudioSupported &&
+    !includeSystemAudio;
 
   useEffect(() => {
     recordFromNotificationRef.current = () => {
@@ -734,6 +742,12 @@ export function RecordingControlBar({
                 {dict.recorder.captureHint}
               </span>
             </div>
+
+            {isHeadphoneWithoutSystemAudio && (
+              <p className="mt-1.5 text-[11px] font-medium text-amber-300">
+                {dict.recorder.headphoneSystemAudioOffHint}
+              </p>
+            )}
           </div>
         </div>
 

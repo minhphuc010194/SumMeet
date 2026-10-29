@@ -260,7 +260,7 @@ export function SmartSummaryPanel({
           <FileText className="h-4 w-4" />
           {dict.summary.overviewTitle}
         </h3>
-        <p className="mt-2 text-sm leading-relaxed text-slate-200">
+        <p className="mt-2 text-sm leading-relaxed whitespace-pre-line text-slate-200">
           {overviewText}
         </p>
       </div>
