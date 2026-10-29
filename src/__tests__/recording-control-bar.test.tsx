@@ -1537,6 +1537,54 @@ describe("Recording system audio", () => {
     expect(saved.summary.overview).toBe(dict.errors.noTranscript);
     expect(onToast).toHaveBeenCalledWith(dict.errors.noTranscript);
   });
+
+  it("lists only the microphone participant when system audio is off and includes the system participant when on", async () => {
+    const first = await renderBar();
+    await startRecording(first.startButton);
+
+    expect(useMeetingStore.getState().meetings[0].participants).toEqual([
+      dict.transcript.defaultMicSpeaker,
+    ]);
+
+    cleanup();
+    useMeetingStore.setState({
+      meetings: [],
+      selectedMeetingId: "",
+      includeSystemAudio: true,
+    });
+    startMock.mockClear();
+    startMock.mockResolvedValue({ success: true, data: STARTED_WITH_SYSTEM_AUDIO });
+
+    const second = await renderBar();
+    await startRecording(second.startButton);
+
+    expect(useMeetingStore.getState().meetings[0].participants).toEqual([
+      dict.transcript.defaultMicSpeaker,
+      dict.session.systemAudioParticipant,
+    ]);
+  });
+
+  it("warns when headphones are active with system audio off and hides the warning once turned on", async () => {
+    invokeMock.mockResolvedValue({
+      ...SYSTEM_AUDIO_INVENTORY,
+      routing: {
+        active_input_device: "AirPods Pro",
+        active_output_device: "AirPods Pro",
+      },
+    });
+
+    const { toggle } = await renderBar();
+
+    expect(
+      screen.getByText(dict.recorder.headphoneSystemAudioOffHint)
+    ).toBeTruthy();
+
+    fireEvent.click(toggle);
+
+    expect(
+      screen.queryByText(dict.recorder.headphoneSystemAudioOffHint)
+    ).toBeNull();
+  });
 });
 
 describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", () => {

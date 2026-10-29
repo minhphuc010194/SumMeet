@@ -179,6 +179,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
           file.fileName
         ),
         isHeadphoneSession: false,
+        participants: [dict.transcript.defaultMicSpeaker],
         locale,
       });
       completeMeetingRecording(

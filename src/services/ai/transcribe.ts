@@ -20,7 +20,12 @@ export function parseDiarizedLinesToSegments(params: {
   const lines = params.rawText
     .split(/\n+/)
     .map((l) => l.trim())
-    .filter((l) => l.length > 1 && !l.includes("[SILENCE]"));
+    .filter((l) => {
+      const hasSpokenContent = l.length > 1;
+      const isSilenceMarker =
+        l.includes("[SILENCE]") || l.toLowerCase() === "silence";
+      return hasSpokenContent && !isSilenceMarker;
+    });
 
   const baseStartMs = Math.max(1000, Math.round(params.startOffsetSec * 1000));
 
@@ -103,8 +108,8 @@ export async function transcribeAudioChunk(params: {
         ? "Hãy nghe đoạn âm thanh này và gỡ băng (transcribe) chính xác nguyên văn lời nói (tiếng Việt hoặc tiếng Anh). Nếu có nhiều người nói khác nhau trong đoạn âm thanh, hãy tách dòng và ghi rõ đầu dòng theo mẫu '[Người nói 1]: nội dung', '[Người nói 2]: nội dung'. Nếu chỉ có 1 người nói, ghi '[Người nói 1]: nội dung'. Nếu chỉ có tiếng nhạc không lời hoặc im lặng, chỉ trả về đúng chuỗi: [SILENCE]. Không giải thích thêm."
         : "Transcribe the exact spoken words from this audio. If multiple speakers are heard, put each turn on a new line prefixed with '[Speaker 1]: text', '[Speaker 2]: text'. If there is no human speech, reply with exact string: [SILENCE]."
       : promptLocale === "vi"
-        ? "Hãy nghe đoạn thu âm từ Microphone này và gỡ băng chính xác nguyên văn lời người nói. Nếu im lặng không có lời nói, chỉ trả về đúng chuỗi: [SILENCE]. Không giải thích thêm."
-        : "Transcribe the exact spoken words from this microphone recording. If silent, reply with [SILENCE].";
+        ? "Hãy nghe đoạn thu âm từ Microphone này và gỡ băng chính xác nguyên văn lời người nói, tách mỗi lượt hoặc ý nói thành một dòng riêng. Nếu im lặng không có lời nói, chỉ trả về đúng chuỗi: [SILENCE]. Không giải thích thêm."
+        : "Transcribe the exact spoken words from this microphone recording, putting each distinct utterance on a new line. If silent, reply with [SILENCE].";
 
   try {
     const result = await callOpenRouterChat({
@@ -127,25 +132,18 @@ export async function transcribeAudioChunk(params: {
     });
 
     const providerUsed = `OpenRouter Audio STT (${result.model})`;
-    const isSilence =
-      result.content.length === 0 ||
-      result.content.includes("[SILENCE]") ||
-      result.content.toLowerCase() === "silence";
-
-    if (isSilence) {
-      return { success: true, data: { segments: [], providerUsed } };
-    }
+    const segments = parseDiarizedLinesToSegments({
+      rawText: result.content,
+      meetingId,
+      channel: params.channel,
+      locale: params.locale,
+      startOffsetSec,
+    });
 
     return {
       success: true,
       data: {
-        segments: parseDiarizedLinesToSegments({
-          rawText: result.content,
-          meetingId,
-          channel: params.channel,
-          locale: params.locale,
-          startOffsetSec,
-        }),
+        segments,
         providerUsed,
       },
     };

@@ -92,6 +92,22 @@ describe("OpenRouter audio transcription", () => {
     expect(empty).toMatchObject({ success: true, data: { segments: [] } });
   });
 
+  it("keeps spoken lines when a chunk response mixes speech with a [SILENCE] line", async () => {
+    fetchMock.mockResolvedValueOnce(
+      completionResponse(
+        "[Người nói 1]: Anh Tài cần tìm lại video cũ trên YouTube\n[SILENCE]"
+      )
+    );
+
+    const mixed = await transcribeAudioChunk(BASE_PARAMS);
+
+    expect(mixed.success).toBe(true);
+    expect(mixed.data?.segments).toHaveLength(1);
+    expect(mixed.data?.segments[0].text).toBe(
+      "Anh Tài cần tìm lại video cũ trên YouTube"
+    );
+  });
+
   it("skips the request for chunks without audio", async () => {
     const result = await transcribeAudioChunk({ ...BASE_PARAMS, wavBase64: "" });
 

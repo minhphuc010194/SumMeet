@@ -33,6 +33,7 @@ export interface Dictionary {
     systemAudioPermissionHint: string;
     systemAudioUnavailable: string;
     systemAudioSilentHint: string;
+    headphoneSystemAudioOffHint: string;
     deviceSwitched: string;
     sessionTitle: string;
     uploadedFileSource: string;
@@ -310,6 +311,7 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       systemAudioPermissionHint: "Trên macOS, lần ghi đầu tiên sẽ hỏi quyền ghi âm thanh hệ thống. Nếu đồng hồ \"Hệ thống\" đứng yên, hãy bật SumMeet trong Cài đặt hệ thống → Quyền riêng tư & Bảo mật → Ghi màn hình & âm thanh hệ thống.",
       systemAudioUnavailable: "Không thu được âm thanh hệ thống, SumMeet đang ghi âm chỉ từ micro.",
       systemAudioSilentHint: "Chưa nghe thấy âm thanh hệ thống trong 1 phút. Nếu đang trong cuộc gọi, hãy kiểm tra quyền ghi âm thanh hệ thống (macOS: Cài đặt hệ thống → Quyền riêng tư & Bảo mật → Ghi màn hình & âm thanh hệ thống).",
+      headphoneSystemAudioOffHint: "Đang đeo tai nghe nhưng tắt Âm thanh hệ thống — bật lên để thu cả tiếng người đối thoại.",
       deviceSwitched: "🎧 Đã chuyển sang: {device}",
       sessionTitle: "Ghi âm lúc {time}",
       uploadedFileSource: "File: {name}",
@@ -590,6 +592,7 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       systemAudioPermissionHint: "On macOS, the first recording asks for permission to record system audio. If the \"System\" meter stays flat, turn on SumMeet in System Settings → Privacy & Security → Screen & System Audio Recording.",
       systemAudioUnavailable: "System audio couldn't start, so SumMeet is recording the microphone only.",
       systemAudioSilentHint: "No system audio for a minute. If you're in a call, check the system audio permission (macOS: System Settings → Privacy & Security → Screen & System Audio Recording).",
+      headphoneSystemAudioOffHint: "Headphones active with System audio off — turn it on to capture remote voices.",
       deviceSwitched: "🎧 Switched to: {device}",
       sessionTitle: "Recording at {time}",
       uploadedFileSource: "File: {name}",

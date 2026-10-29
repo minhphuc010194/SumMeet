@@ -1,7 +1,7 @@
 import type { ChatMessage, TranscriptSegment } from "@/types/meeting";
 import { formatSegmentsForPrompt } from "@/services/ai/prompts";
 
-export const DEFAULT_MAX_CONTEXT_TOKENS = 6000;
+export const DEFAULT_MAX_CONTEXT_TOKENS = 32000;
 
 /**
  * Estimates token count using a conservative ~3.8 characters per token heuristic
@@ -34,12 +34,26 @@ export function fitTranscriptToTokenBudget(
   }
 
   // Keep the first 25% of budget for meeting introductions/agenda and 75% for latest segments
-  const headCount = Math.max(1, Math.floor(segments.length * 0.25));
-  const headSegments = segments.slice(0, headCount);
-  const tailSegments = segments.slice(headCount);
+  const headTokenLimit = Math.floor(maxTokens * 0.25);
+  const headSegments: TranscriptSegment[] = [];
+  let runningTokens = 0;
 
+  for (let i = 0; i < segments.length; i++) {
+    const candidateTokens = estimateTokenCount(
+      formatSegmentsForPrompt([segments[i]])
+    );
+    if (
+      headSegments.length > 0 &&
+      runningTokens + candidateTokens > headTokenLimit
+    ) {
+      break;
+    }
+    headSegments.push(segments[i]);
+    runningTokens += candidateTokens;
+  }
+
+  const tailSegments = segments.slice(headSegments.length);
   const selectedTail: TranscriptSegment[] = [];
-  let runningTokens = estimateTokenCount(formatSegmentsForPrompt(headSegments));
 
   for (let i = tailSegments.length - 1; i >= 0; i--) {
     const candidateText = formatSegmentsForPrompt([tailSegments[i]]);
