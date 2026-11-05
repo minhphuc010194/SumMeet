@@ -17,10 +17,15 @@ import {
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification";
+import { AskFredChatPanel } from "@/components/meeting/AskFredChatPanel";
 import { SmartSummaryPanel } from "@/components/meeting/SmartSummaryPanel";
 import { RecordingControlBar } from "@/components/recorder/RecordingControlBar";
 import { getDictionary } from "@/i18n/dictionaries";
-import { generateSummaryWithFallback } from "@/services/ai/provider-registry";
+import {
+  answerMeetingQuestion,
+  generateSummaryWithFallback,
+} from "@/services/ai/provider-registry";
+import { transcribeUploadedMedia } from "@/services/audio/media-upload";
 import {
   announceCallDetection,
   requestCallAttention,
@@ -72,6 +77,9 @@ vi.mock("@/services/audio/mic-activity", () => ({
   requestCallAttention: vi.fn(),
   announceCallDetection: vi.fn(),
 }));
+vi.mock("@/services/audio/media-upload", () => ({
+  transcribeUploadedMedia: vi.fn(),
+}));
 vi.mock("@/services/audio/recording-transcription", () => ({
   transcribeRecordingSlice: vi.fn(),
   transcribeRecordingTail: vi.fn(),
@@ -79,6 +87,7 @@ vi.mock("@/services/audio/recording-transcription", () => ({
 vi.mock("@/services/ai/provider-registry", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/services/ai/provider-registry")>()),
   generateSummaryWithFallback: vi.fn(),
+  answerMeetingQuestion: vi.fn(),
 }));
 
 const invokeMock = vi.mocked(invoke);
@@ -87,7 +96,9 @@ const startMock = vi.mocked(startMicRecording);
 const stopMock = vi.mocked(stopMicRecording);
 const sliceMock = vi.mocked(transcribeRecordingSlice);
 const tailMock = vi.mocked(transcribeRecordingTail);
+const uploadMock = vi.mocked(transcribeUploadedMedia);
 const summaryMock = vi.mocked(generateSummaryWithFallback);
+const chatMock = vi.mocked(answerMeetingQuestion);
 const subscribeMock = vi.mocked(subscribeMicActivity);
 const subscribeActionsMock = vi.mocked(subscribeCallActions);
 const onActionMock = vi.mocked(onAction);
@@ -2171,5 +2182,198 @@ describe("SmartSummaryPanel recovery when a completed meeting has 0 segments", (
     expect(summaryMock.mock.calls[0][0].outputLanguage).toBe("auto");
   });
 });
+
+describe("Audio transcription vs summary/chat model routing", () => {
+  const AUDIO_MODEL = "custom/audio-stt-model";
+  const TEXT_MODEL = "custom/text-summary-model";
+  const originalCreateObjectURL = URL.createObjectURL;
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    URL.createObjectURL = vi.fn(() => "blob:uploaded-audio");
+    useMeetingStore.setState({
+      meetings: [],
+      selectedMeetingId: "",
+      openRouterKey: "sk-or-routing-key",
+      preferredInputDeviceId: null,
+      includeSystemAudio: false,
+      recordingTranscribedSec: 0,
+      recordingSystemTranscribedSec: 0,
+      settings: {
+        openRouterModel: AUDIO_MODEL,
+        openRouterTextModel: TEXT_MODEL,
+        transcriptionLanguage: "vi",
+        callDetectionEnabled: false,
+      },
+    });
+    invokeMock.mockResolvedValue(DEVICE_INVENTORY);
+    activeMock.mockResolvedValue({ success: true, data: null });
+    startMock.mockResolvedValue({ success: true, data: STARTED });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    URL.createObjectURL = originalCreateObjectURL;
+    invokeMock.mockReset();
+  });
+
+  it("routes RecordingControlBar live slice and stop tail to openRouterModel and summary to openRouterTextModel", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    sliceMock.mockImplementation(async ({ meetingId }) => ({
+      success: true,
+      data: { segments: [segmentFor(meetingId)], nextStartSec: 8 },
+    }));
+    tailMock.mockResolvedValue({ success: true });
+    stopMock.mockResolvedValue({
+      success: true,
+      data: {
+        meetingId: STARTED.meetingId,
+        fileName: "mtg.wav",
+        wavPath: WAV_PATH,
+        sizeBytes: 1,
+        createdAtMs: 0,
+        durationSec: 12,
+      },
+    });
+    summaryMock.mockImplementation(async ({ meetingId }) => ({
+      success: true,
+      data: summaryFor(meetingId),
+    }));
+
+    render(<RecordingControlBar dict={dict} locale="vi" onToast={vi.fn()} />);
+    const startButton = (await screen.findByRole("button", {
+      name: dict.recorder.startRecording,
+    })) as HTMLButtonElement;
+    await waitFor(() => expect(startButton.disabled).toBe(false));
+
+    fireEvent.click(startButton);
+    await screen.findByRole("button", { name: dict.recorder.stopRecording });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dict.recorder.stopRecording })
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(sliceMock).toHaveBeenCalledTimes(1);
+    expect(sliceMock.mock.calls[0][0].model).toBe(AUDIO_MODEL);
+    expect(tailMock).toHaveBeenCalledTimes(1);
+    expect(tailMock.mock.calls[0][0].model).toBe(AUDIO_MODEL);
+    expect(summaryMock).toHaveBeenCalledTimes(1);
+    expect(summaryMock.mock.calls[0][0].model).toBe(TEXT_MODEL);
+  });
+
+  it("routes RecordingControlBar file upload transcription to openRouterModel and summary to openRouterTextModel", async () => {
+    uploadMock.mockImplementation(async ({ meetingId }) => ({
+      success: true,
+      data: { segments: [segmentFor(meetingId)], durationSec: 30 },
+    }));
+    summaryMock.mockImplementation(async ({ meetingId }) => ({
+      success: true,
+      data: summaryFor(meetingId),
+    }));
+
+    const { container } = render(
+      <RecordingControlBar dict={dict} locale="vi" onToast={vi.fn()} />
+    );
+    const fileInput = container.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement;
+    const file = new File(["audio"], "sync.wav", { type: "audio/wav" });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => expect(summaryMock).toHaveBeenCalledTimes(1));
+    expect(uploadMock).toHaveBeenCalledTimes(1);
+    expect(uploadMock.mock.calls[0][0].model).toBe(AUDIO_MODEL);
+    expect(summaryMock.mock.calls[0][0].model).toBe(TEXT_MODEL);
+  });
+
+  it("routes SmartSummaryPanel disk tail transcription to openRouterModel and summary generation to openRouterTextModel", async () => {
+    const meeting = useMeetingStore.getState().createMeetingSession({
+      title: "Panel Routing",
+      audioDeviceUsed: "Mic",
+      isHeadphoneSession: false,
+      locale: "en",
+    });
+    useMeetingStore.getState().completeMeetingRecording(meeting.id, 90);
+
+    tailMock.mockImplementation(async ({ meetingId, onSegments }) => {
+      onSegments([segmentFor(meetingId)]);
+      return { success: true };
+    });
+    summaryMock.mockResolvedValue({
+      success: true,
+      data: summaryFor(meeting.id),
+    });
+
+    render(
+      <SmartSummaryPanel
+        meeting={useMeetingStore.getState().meetings[0]}
+        dict={dictEn}
+        locale="en"
+        onToast={vi.fn()}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: dictEn.summary.regenerateButton })
+    );
+
+    await waitFor(() => expect(summaryMock).toHaveBeenCalledTimes(1));
+    expect(tailMock).toHaveBeenCalledTimes(1);
+    expect(tailMock.mock.calls[0][0].model).toBe(AUDIO_MODEL);
+    expect(summaryMock.mock.calls[0][0].model).toBe(TEXT_MODEL);
+  });
+
+  it("routes AskFredChatPanel questions to openRouterTextModel", async () => {
+    const meeting = useMeetingStore.getState().createMeetingSession({
+      title: "Chat Routing",
+      audioDeviceUsed: "Mic",
+      isHeadphoneSession: false,
+      locale: "en",
+    });
+    useMeetingStore
+      .getState()
+      .appendTranscriptSegment(meeting.id, segmentFor(meeting.id));
+    useMeetingStore.getState().completeMeetingRecording(meeting.id, 90);
+
+    chatMock.mockResolvedValue({
+      success: true,
+      data: {
+        answer: "Summary answer",
+        providerUsed: `OpenRouter (${TEXT_MODEL})`,
+        citations: [],
+      },
+    });
+
+    render(
+      <AskFredChatPanel
+        meeting={useMeetingStore.getState().meetings[0]}
+        dict={dictEn}
+        locale="en"
+        onToast={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(dictEn.askFred.inputPlaceholder), {
+      target: { value: "What happened at the end?" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: dictEn.askFred.sendButton })
+    );
+
+    await waitFor(() => expect(chatMock).toHaveBeenCalledTimes(1));
+    expect(chatMock.mock.calls[0][0].model).toBe(TEXT_MODEL);
+  });
+});
+
 
 

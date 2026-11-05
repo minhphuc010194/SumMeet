@@ -492,3 +492,119 @@ describe("Transcript segment ordering and clearing", () => {
   });
 });
 
+describe("Separate audio and text model settings migration", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useMeetingStore.setState({
+      openRouterKey: "",
+      settings: {
+        openRouterModel: "google/gemini-3.1-flash-lite",
+        openRouterTextModel: "openai/gpt-6-luna",
+        transcriptionLanguage: "vi",
+        callDetectionEnabled: true,
+      },
+    });
+  });
+
+  it("migrates version 1 settings by adding default openRouterTextModel while preserving saved openRouterModel", async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        state: {
+          meetings: [],
+          selectedMeetingId: "",
+          calendarEvents: [],
+          settings: {
+            openRouterModel: "custom/audio-v1",
+            transcriptionLanguage: "en",
+          },
+        },
+      })
+    );
+
+    await useMeetingStore.persist.rehydrate();
+
+    expect(useMeetingStore.getState().settings).toEqual({
+      openRouterModel: "custom/audio-v1",
+      openRouterTextModel: "openai/gpt-6-luna",
+      transcriptionLanguage: "en",
+      callDetectionEnabled: true,
+    });
+  });
+
+  it("migrates version 2 settings by filling missing or blank openRouterTextModel while preserving saved settings", async () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 2,
+        state: {
+          meetings: [],
+          selectedMeetingId: "",
+          calendarEvents: [],
+          settings: {
+            openRouterModel: "custom/audio-v2",
+            transcriptionLanguage: "en",
+            callDetectionEnabled: false,
+          },
+        },
+      })
+    );
+
+    await useMeetingStore.persist.rehydrate();
+
+    expect(useMeetingStore.getState().settings).toEqual({
+      openRouterModel: "custom/audio-v2",
+      openRouterTextModel: "openai/gpt-6-luna",
+      transcriptionLanguage: "en",
+      callDetectionEnabled: false,
+    });
+
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        version: 2,
+        state: {
+          meetings: [],
+          selectedMeetingId: "",
+          calendarEvents: [],
+          settings: {
+            openRouterModel: "custom/audio-v2",
+            openRouterTextModel: "   ",
+            transcriptionLanguage: "vi",
+            callDetectionEnabled: true,
+          },
+        },
+      })
+    );
+
+    await useMeetingStore.persist.rehydrate();
+
+    expect(useMeetingStore.getState().settings).toEqual({
+      openRouterModel: "custom/audio-v2",
+      openRouterTextModel: "openai/gpt-6-luna",
+      transcriptionLanguage: "vi",
+      callDetectionEnabled: true,
+    });
+  });
+
+  it("persists version 3 settings with openRouterTextModel and never writes openRouterKey to localStorage", async () => {
+    useMeetingStore.setState({ openRouterKey: "sk-or-v1-secret-value" });
+    useMeetingStore.getState().updateSettings({
+      openRouterModel: "custom/audio-model",
+      openRouterTextModel: "anthropic/claude-sonnet-4.6",
+    });
+
+    const persisted = localStorage.getItem(STORAGE_KEY) ?? "";
+    const parsed = JSON.parse(persisted);
+    expect(parsed.version).toBe(3);
+    expect(parsed.state).not.toHaveProperty("openRouterKey");
+    expect(persisted).not.toContain("sk-or-v1-secret");
+    expect(parsed.state.settings).toMatchObject({
+      openRouterModel: "custom/audio-model",
+      openRouterTextModel: "anthropic/claude-sonnet-4.6",
+    });
+  });
+});
+
+

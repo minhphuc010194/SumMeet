@@ -1,4 +1,11 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AIProviderSettingsModal } from "@/components/settings/AIProviderSettingsModal";
 import { getDictionary } from "@/i18n/dictionaries";
@@ -333,4 +340,113 @@ describe("AI provider settings API key check and button styling", () => {
     expect(removeKeyBtn.className).toContain("text-rose-300");
   });
 });
+
+describe("AI provider settings audio and text model fields", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useMeetingStore.getState().updateSettings({
+      openRouterModel: "google/gemini-3.1-flash-lite",
+      openRouterTextModel: "openai/gpt-6-luna",
+      transcriptionLanguage: "vi",
+      callDetectionEnabled: true,
+    });
+    mocks.getAutostartEnabled
+      .mockReset()
+      .mockResolvedValue({ success: true, data: false });
+    mocks.setAutostartEnabled
+      .mockReset()
+      .mockResolvedValue({ success: true, data: null });
+  });
+
+  it("renders separate audio and text model inputs with localized labels and hints", async () => {
+    await renderModal();
+
+    const audioInput = screen.getByLabelText(
+      dict.settings.modelLabel
+    ) as HTMLInputElement;
+    const textInput = screen.getByLabelText(
+      dict.settings.textModelLabel
+    ) as HTMLInputElement;
+
+    expect(audioInput.id).toBe("settings-openrouter-model");
+    expect(audioInput.value).toBe("google/gemini-3.1-flash-lite");
+    expect(audioInput.placeholder).toBe("google/gemini-3.1-flash-lite");
+    expect(audioInput.className).not.toContain("text-white");
+    expect(screen.getByText(dict.settings.modelHint)).toBeTruthy();
+
+    expect(textInput.id).toBe("settings-openrouter-text-model");
+    expect(textInput.value).toBe("openai/gpt-6-luna");
+    expect(textInput.placeholder).toBe("openai/gpt-6-luna");
+    expect(textInput.className).not.toContain("text-white");
+    expect(screen.getByText(dict.settings.textModelHint)).toBeTruthy();
+
+    const viDict = getDictionary("vi");
+    expect(viDict.settings.modelLabel).toBe("Model gỡ băng âm thanh:");
+    expect(viDict.settings.textModelLabel).toBe("Model tóm tắt & hỏi đáp:");
+  });
+
+  it("saves openRouterModel and openRouterTextModel independently", async () => {
+    const first = await renderModal();
+
+    fireEvent.change(screen.getByLabelText(dict.settings.modelLabel), {
+      target: { value: "  google/gemini-2.5-pro  " },
+    });
+    save();
+    await waitFor(() => expect(first.onClose).toHaveBeenCalledTimes(1));
+
+    expect(useMeetingStore.getState().settings).toMatchObject({
+      openRouterModel: "google/gemini-2.5-pro",
+      openRouterTextModel: "openai/gpt-6-luna",
+    });
+
+    cleanup();
+    const second = await renderModal();
+    fireEvent.change(screen.getByLabelText(dict.settings.textModelLabel), {
+      target: { value: "  anthropic/claude-sonnet-4.6  " },
+    });
+    save();
+    await waitFor(() => expect(second.onClose).toHaveBeenCalledTimes(1));
+
+    expect(useMeetingStore.getState().settings).toMatchObject({
+      openRouterModel: "google/gemini-2.5-pro",
+      openRouterTextModel: "anthropic/claude-sonnet-4.6",
+    });
+  });
+
+  it("defaults each model independently when saved blank", async () => {
+    useMeetingStore.getState().updateSettings({
+      openRouterModel: "custom/audio-model",
+      openRouterTextModel: "custom/text-model",
+    });
+    const first = await renderModal();
+
+    fireEvent.change(screen.getByLabelText(dict.settings.modelLabel), {
+      target: { value: "   " },
+    });
+    save();
+    await waitFor(() => expect(first.onClose).toHaveBeenCalledTimes(1));
+
+    expect(useMeetingStore.getState().settings).toMatchObject({
+      openRouterModel: "google/gemini-3.1-flash-lite",
+      openRouterTextModel: "custom/text-model",
+    });
+
+    cleanup();
+    useMeetingStore.getState().updateSettings({
+      openRouterModel: "custom/audio-model",
+    });
+    const second = await renderModal();
+    fireEvent.change(screen.getByLabelText(dict.settings.textModelLabel), {
+      target: { value: "   " },
+    });
+    save();
+    await waitFor(() => expect(second.onClose).toHaveBeenCalledTimes(1));
+
+    expect(useMeetingStore.getState().settings).toMatchObject({
+      openRouterModel: "custom/audio-model",
+      openRouterTextModel: "openai/gpt-6-luna",
+    });
+  });
+});
+
 

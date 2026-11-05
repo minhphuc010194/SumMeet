@@ -156,7 +156,7 @@ export function SmartSummaryPanel({
 
       const result = await generateSummaryWithFallback({
         apiKey: openRouterKey,
-        model: settings.openRouterModel,
+        model: settings.openRouterTextModel,
         meetingId: meeting.id,
         meetingTitle: meeting.title,
         templateId: targetTemplate,
