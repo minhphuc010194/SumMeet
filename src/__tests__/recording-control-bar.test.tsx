@@ -42,6 +42,11 @@ import {
   transcribeRecordingSlice,
   transcribeRecordingTail,
 } from "@/services/audio/recording-transcription";
+import {
+  clearCachedMeetingAudio,
+  downloadMeetingAudio,
+  formatRecordingDateTime,
+} from "@/services/export/export-service";
 import { useMeetingStore } from "@/store/meeting-store";
 import type { MeetingSummary, TranscriptSegment } from "@/types/meeting";
 
@@ -2375,5 +2380,130 @@ describe("Audio transcription vs summary/chat model routing", () => {
   });
 });
 
+describe("Dated recording sessions and uploaded audio caching", () => {
+  const originalCreateObjectURL = URL.createObjectURL;
 
+  beforeEach(() => {
+    localStorage.clear();
+    vi.clearAllMocks();
+    clearCachedMeetingAudio();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    URL.createObjectURL = vi.fn(() => "blob:uploaded-audio-session");
+    useMeetingStore.setState({
+      meetings: [],
+      selectedMeetingId: "",
+      openRouterKey: "sk-or-export-key",
+      preferredInputDeviceId: null,
+      includeSystemAudio: false,
+      recordingTranscribedSec: 0,
+      recordingSystemTranscribedSec: 0,
+    });
+    invokeMock.mockResolvedValue(DEVICE_INVENTORY);
+    activeMock.mockResolvedValue({ success: true, data: null });
+    startMock.mockResolvedValue({ success: true, data: STARTED });
+  });
 
+  afterEach(() => {
+    cleanup();
+    clearCachedMeetingAudio();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    URL.createObjectURL = originalCreateObjectURL;
+    invokeMock.mockReset();
+  });
+
+  it("includes both localized date and time in new recording titles and uses a dated meeting id", async () => {
+    const fixedNow = new Date(2026, 10, 5, 14, 22, 9, 45);
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(fixedNow);
+
+    render(<RecordingControlBar dict={dict} locale="vi" onToast={vi.fn()} />);
+    const startButton = (await screen.findByRole("button", {
+      name: dict.recorder.startRecording,
+    })) as HTMLButtonElement;
+    await waitFor(() => expect(startButton.disabled).toBe(false));
+
+    fireEvent.click(startButton);
+    await screen.findByRole("button", { name: dict.recorder.stopRecording });
+
+    const createdMeeting = useMeetingStore.getState().meetings[0];
+    const expectedTitle = dict.recorder.sessionTitle.replace(
+      "{time}",
+      formatRecordingDateTime(fixedNow, "vi")
+    );
+
+    expect(createdMeeting.title).toBe(expectedTitle);
+    expect(createdMeeting.title).toContain("2026");
+    expect(createdMeeting.id).toBe("mtg-2026-11-05_14-22-09-045");
+    expect(startMock).toHaveBeenCalledWith({
+      meetingId: "mtg-2026-11-05_14-22-09-045",
+      inputDeviceId: null,
+      includeSystemAudio: false,
+      locale: "vi",
+    });
+  });
+
+  it("caches uploaded audio bytes so downloadMeetingAudio saves via save_export_file without fetching blob URLs", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    uploadMock.mockImplementation(async ({ meetingId }) => ({
+      success: true,
+      data: { segments: [segmentFor(meetingId)], durationSec: 25 },
+    }));
+    summaryMock.mockImplementation(async ({ meetingId }) => ({
+      success: true,
+      data: summaryFor(meetingId),
+    }));
+
+    const { container } = render(
+      <RecordingControlBar dict={dict} locale="vi" onToast={vi.fn()} />
+    );
+    const fileInput = container.querySelector(
+      'input[type="file"]'
+    ) as HTMLInputElement;
+    const file = new File(["RIFF-WAV-BYTES"], "customer-call.mp3", {
+      type: "audio/mpeg",
+    });
+
+    fireEvent.change(fileInput, { target: { files: [file] } });
+
+    await waitFor(() => expect(summaryMock).toHaveBeenCalledTimes(1));
+
+    const uploadedMeeting = useMeetingStore.getState().meetings[0];
+    expect(uploadedMeeting.audioDataUrl).toBe("blob:uploaded-audio-session");
+
+    invokeMock.mockImplementation(async (cmd) => {
+      if (cmd === "save_export_file") {
+        return {
+          fileName: "customer-call.mp3",
+          savedPath: "/Downloads/customer-call.mp3",
+          sizeBytes: 14,
+        };
+      }
+      return DEVICE_INVENTORY;
+    });
+
+    const downloadRes = await downloadMeetingAudio({
+      meeting: uploadedMeeting,
+      locale: "vi",
+    });
+
+    expect(downloadRes).toEqual({
+      success: true,
+      data: {
+        fileName: "customer-call.mp3",
+        savedPath: "/Downloads/customer-call.mp3",
+        sizeBytes: 14,
+      },
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(invokeMock).toHaveBeenCalledWith(
+      "save_export_file",
+      expect.objectContaining({
+        format: "mp3",
+        contentBase64: Buffer.from("RIFF-WAV-BYTES").toString("base64"),
+      })
+    );
+  });
+});

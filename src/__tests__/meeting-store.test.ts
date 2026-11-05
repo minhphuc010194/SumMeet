@@ -90,6 +90,18 @@ describe("Meeting session defaults", () => {
     expect(meeting.id).toBe("mtg-1792242085270");
     expect(meeting.createdAt).toBe("2026-10-17T13:01:25.270Z");
   });
+
+  it("generates a dated meeting id without dots when id is omitted", () => {
+    const meeting = useMeetingStore.getState().createMeetingSession({
+      ...SESSION_PARAMS,
+      locale: "en",
+    });
+
+    expect(meeting.id).toMatch(
+      /^mtg-\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}-\d{3}$/
+    );
+    expect(meeting.id).not.toContain(".");
+  });
 });
 
 describe("Live transcription offset", () => {

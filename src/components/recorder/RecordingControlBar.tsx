@@ -39,6 +39,10 @@ import {
   transcribeRecordingSlice,
   transcribeRecordingTail,
 } from "@/services/audio/recording-transcription";
+import {
+  cacheUploadedMeetingAudio,
+  formatRecordingDateTime,
+} from "@/services/export/export-service";
 import { useMeetingStore } from "@/store/meeting-store";
 
 interface RecordingControlBarProps {
@@ -452,10 +456,7 @@ export function RecordingControlBar({
   );
 
   const handleStartRecording = async () => {
-    const timeLabel = new Date().toLocaleTimeString(
-      locale === "vi" ? "vi-VN" : "en-US",
-      { hour: "2-digit", minute: "2-digit", second: "2-digit" }
-    );
+    const timeLabel = formatRecordingDateTime(new Date(), locale);
 
     const wantsSystemAudio = includeSystemAudio && systemAudioSupported;
     const newMeeting = createMeetingSession({
@@ -601,6 +602,7 @@ export function RecordingControlBar({
         return;
       }
 
+      await cacheUploadedMeetingAudio({ meetingId: newMeeting.id, file });
       const { segments, durationSec } = transcription.data;
       segments.forEach((seg) => appendTranscriptSegment(newMeeting.id, seg));
       await summarizeAndPresent({

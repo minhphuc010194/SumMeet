@@ -2,19 +2,27 @@
 
 import React, { useState } from "react";
 import {
-  Calendar,
   Check,
   Copy,
   Download,
+  FileAudio,
+  FileDown,
   FileText,
-  Printer,
+  Loader2,
   Video,
 } from "lucide-react";
 import { ModalDialog } from "@/components/common/ModalDialog";
 import type { Dictionary } from "@/i18n/dictionaries";
-import type { Meeting } from "@/types/meeting";
-import { generateMeetingMarkdown } from "@/services/export/export-service";
+import {
+  downloadMeetingAudio,
+  exportMeetingMarkdown,
+  exportMeetingPdf,
+  formatRecordingDateShort,
+  formatRecordingDateTime,
+  generateMeetingMarkdown,
+} from "@/services/export/export-service";
 import { useMeetingStore } from "@/store/meeting-store";
+import type { Meeting } from "@/types/meeting";
 
 interface CalendarAndExportModalProps {
   mode: "calendar" | "export" | null;
@@ -38,8 +46,38 @@ export function CalendarAndExportModal({
     "https://calendar.google.com/calendar/ical/team%40company.com/basic.ics"
   );
   const [copiedMd, setCopiedMd] = useState(false);
+  const [includeTranscript, setIncludeTranscript] = useState(false);
+  const [busyAction, setBusyAction] = useState<"md" | "pdf" | "audio" | null>(
+    null
+  );
 
-  const markdownContent = generateMeetingMarkdown(meeting);
+  if (!mode) {
+    return null;
+  }
+
+  const isExportBusy = busyAction !== null;
+  const markdownContent = generateMeetingMarkdown(meeting, {
+    locale: dict.locale,
+    includeTranscript,
+  });
+
+  const formattedDateTime = formatRecordingDateTime(
+    meeting.createdAt,
+    dict.locale
+  );
+  const shortDate = formatRecordingDateShort(meeting.createdAt, dict.locale);
+  const parsedDate = new Date(meeting.createdAt);
+  const isoDate = Number.isNaN(parsedDate.getTime())
+    ? ""
+    : `${String(parsedDate.getFullYear()).padStart(4, "0")}-${String(
+        parsedDate.getMonth() + 1
+      ).padStart(2, "0")}-${String(parsedDate.getDate()).padStart(2, "0")}`;
+  const hasShortDate = Boolean(shortDate) && meeting.title.includes(shortDate);
+  const hasIsoDate = Boolean(isoDate) && meeting.title.includes(isoDate);
+  const hasDateInTitle = hasShortDate || hasIsoDate;
+  const exportSubtitle = hasDateInTitle
+    ? meeting.title
+    : `${meeting.title} • ${formattedDateTime}`;
 
   const handleCopyMarkdown = async () => {
     try {
@@ -48,29 +86,80 @@ export function CalendarAndExportModal({
       onToast(dict.exportModal.copied);
       setTimeout(() => setCopiedMd(false), 2000);
     } catch (error) {
-      console.error("[CalendarAndExportModal] Clipboard write failed:", {
+      console.error("[CalendarAndExportModal] Operation failed:", {
+        context: "copyMarkdown",
         error: error instanceof Error ? error.message : String(error),
       });
+      onToast(dict.errors.exportFailed);
     }
   };
 
-  const handleDownloadMarkdown = () => {
-    const blob = new Blob([markdownContent], {
-      type: "text/markdown;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${meeting.title.replace(/\s+/g, "-")}.md`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    onToast(dict.exportModal.downloaded);
+  const handleDownloadMarkdown = async () => {
+    setBusyAction("md");
+    try {
+      const result = await exportMeetingMarkdown({
+        meeting,
+        locale: dict.locale,
+        includeTranscript,
+      });
+      if (result.success && result.data) {
+        onToast(
+          dict.exportModal.savedToDownloads.replace(
+            "{fileName}",
+            result.data.fileName
+          )
+        );
+      } else {
+        onToast(result.error ?? dict.errors.exportFailed);
+      }
+    } finally {
+      setBusyAction(null);
+    }
   };
 
-  const handlePrintPdf = () => {
-    window.print();
+  const handleDownloadPdf = async () => {
+    setBusyAction("pdf");
+    try {
+      const result = await exportMeetingPdf({
+        meeting,
+        locale: dict.locale,
+        includeTranscript,
+      });
+      if (result.success && result.data) {
+        onToast(
+          dict.exportModal.savedToDownloads.replace(
+            "{fileName}",
+            result.data.fileName
+          )
+        );
+      } else {
+        onToast(result.error ?? dict.errors.exportFailed);
+      }
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleDownloadAudio = async () => {
+    setBusyAction("audio");
+    try {
+      const result = await downloadMeetingAudio({
+        meeting,
+        locale: dict.locale,
+      });
+      if (result.success && result.data) {
+        onToast(
+          dict.exportModal.savedToDownloads.replace(
+            "{fileName}",
+            result.data.fileName
+          )
+        );
+      } else {
+        onToast(result.error ?? dict.errors.audioFileNotFound);
+      }
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   const handleSyncCalendarFeed = (e: React.FormEvent) => {
@@ -172,43 +261,84 @@ export function CalendarAndExportModal({
 
   return (
     <ModalDialog
-      isOpen={mode === "export"}
+      isOpen={true}
       onClose={onClose}
       title={dict.exportModal.title}
-      subtitle={meeting.title}
+      subtitle={exportSubtitle}
     >
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={handleCopyMarkdown}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs font-semibold text-slate-100 hover:bg-slate-700"
-          >
-            {copiedMd ? (
-              <Check className="h-3.5 w-3.5 text-emerald-400" />
-            ) : (
-              <Copy className="h-3.5 w-3.5 text-orange-400" />
-            )}
-            {copiedMd ? dict.exportModal.copied : dict.exportModal.copyMarkdown}
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={isExportBusy}
+              onClick={handleCopyMarkdown}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs font-semibold text-slate-100 hover:bg-slate-700 disabled:opacity-50"
+            >
+              {copiedMd ? (
+                <Check className="h-3.5 w-3.5 text-emerald-400" />
+              ) : (
+                <Copy className="h-3.5 w-3.5 text-orange-400" />
+              )}
+              {copiedMd ? dict.exportModal.copied : dict.exportModal.copyMarkdown}
+            </button>
 
-          <button
-            type="button"
-            onClick={handleDownloadMarkdown}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-orange-600 px-3 text-xs font-semibold text-white hover:bg-orange-500"
-          >
-            <Download className="h-3.5 w-3.5" />
-            {dict.exportModal.downloadMarkdown}
-          </button>
+            <button
+              type="button"
+              disabled={isExportBusy}
+              aria-busy={busyAction === "md"}
+              onClick={handleDownloadMarkdown}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-orange-600 px-3 text-xs font-semibold text-white hover:bg-orange-500 disabled:opacity-50"
+            >
+              {busyAction === "md" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              {dict.exportModal.downloadMarkdown}
+            </button>
 
-          <button
-            type="button"
-            onClick={handlePrintPdf}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs font-semibold text-slate-100 hover:bg-slate-700"
-          >
-            <Printer className="h-3.5 w-3.5 text-orange-400" />
-            {dict.exportModal.printPdfButton}
-          </button>
+            <button
+              type="button"
+              disabled={isExportBusy}
+              aria-busy={busyAction === "pdf"}
+              onClick={handleDownloadPdf}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs font-semibold text-slate-100 hover:bg-slate-700 disabled:opacity-50"
+            >
+              {busyAction === "pdf" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-orange-400" />
+              ) : (
+                <FileDown className="h-3.5 w-3.5 text-orange-400" />
+              )}
+              {dict.exportModal.downloadPdf}
+            </button>
+
+            <button
+              type="button"
+              disabled={isExportBusy}
+              aria-busy={busyAction === "audio"}
+              onClick={handleDownloadAudio}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs font-semibold text-slate-100 hover:bg-slate-700 disabled:opacity-50"
+            >
+              {busyAction === "audio" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-400" />
+              ) : (
+                <FileAudio className="h-3.5 w-3.5 text-emerald-400" />
+              )}
+              {dict.exportModal.downloadAudio}
+            </button>
+          </div>
+
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-slate-800 bg-slate-950/70 px-3 py-1.5 text-xs font-medium text-slate-200 select-none">
+            <input
+              type="checkbox"
+              checked={includeTranscript}
+              disabled={isExportBusy}
+              onChange={(e) => setIncludeTranscript(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-slate-600 accent-orange-600"
+            />
+            <span>{dict.exportModal.includeTranscript}</span>
+          </label>
         </div>
 
         <div>
