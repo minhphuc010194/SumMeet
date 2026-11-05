@@ -24,6 +24,7 @@ import {
   DEFAULT_OPENROUTER_TEXT_MODEL,
   callOpenRouterChat,
 } from "@/services/ai/provider-registry";
+import { buildDatedMeetingId } from "@/services/export/export-service";
 
 const INITIAL_MEETINGS: Meeting[] = [];
 
@@ -153,7 +154,7 @@ export const useMeetingStore = create<MeetingStoreState>()(
         calendarEventId,
       }) => {
         const dict = getDictionary(locale);
-        const id = customId ?? `mtg-${Date.now()}`;
+        const id = customId ?? buildDatedMeetingId();
         const now = customCreatedAt ?? new Date().toISOString();
         const newMeeting: Meeting = {
           id,

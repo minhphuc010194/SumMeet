@@ -1,6 +1,7 @@
 pub mod audio;
 mod credentials;
 pub mod db;
+mod exports;
 mod mic;
 mod mic_activity;
 mod recordings;
@@ -87,6 +88,11 @@ pub fn run() {
             let recordings_dir = app.path().app_data_dir()?.join("recordings");
             std::fs::create_dir_all(&recordings_dir)?;
             app.manage(recordings::RecordingsDir(recordings_dir));
+            let downloads_dir = app.path().download_dir().ok();
+            if let Some(ref dir) = downloads_dir {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            app.manage(exports::DownloadsDir(downloads_dir));
             mic_activity::spawn_watcher(app.handle().clone());
 
             let click_opens_window = !cfg!(target_os = "macos");
@@ -134,6 +140,8 @@ pub fn run() {
             recordings::list_recordings,
             recordings::delete_recording,
             recordings::delete_all_recordings,
+            exports::save_export_file,
+            exports::export_recording_audio,
         ]);
 
     let builder = builder

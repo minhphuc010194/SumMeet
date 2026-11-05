@@ -190,11 +190,27 @@ export interface Dictionary {
     markdownTab: string;
     pdfTab: string;
     downloadMarkdown: string;
+    downloadPdf: string;
+    downloadAudio: string;
     copyMarkdown: string;
     copied: string;
     downloaded: string;
+    savedToDownloads: string;
+    includeTranscript: string;
     markdownPreview: string;
     printPdfButton: string;
+    metaDate: string;
+    metaDuration: string;
+    durationMinutesUnit: string;
+    metaDevice: string;
+    headphoneMode: string;
+    speakerMode: string;
+    metaParticipants: string;
+    metaModel: string;
+    dueLabel: string;
+    emptyItems: string;
+    transcriptHeading: string;
+    pageFooter: string;
   };
   settings: {
     title: string;
@@ -252,6 +268,10 @@ export interface Dictionary {
     recordingActive: string;
     recordingFailed: string;
     unsupportedMedia: string;
+    exportFailed: string;
+    exportTooLarge: string;
+    downloadsUnavailable: string;
+    audioFileNotFound: string;
   };
   update: {
     title: string;
@@ -475,11 +495,27 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       markdownTab: "Markdown (.md)",
       pdfTab: "PDF",
       downloadMarkdown: "Tải .md",
+      downloadPdf: "Tải PDF",
+      downloadAudio: "Tải âm thanh",
       copyMarkdown: "Sao chép",
       copied: "Đã chép!",
       downloaded: "Đã tải file .md!",
+      savedToDownloads: 'Đã lưu "{fileName}" vào thư mục Tải về!',
+      includeTranscript: "Kèm toàn bộ Transcript",
       markdownPreview: "Xem trước",
       printPdfButton: "In / PDF",
+      metaDate: "Thời gian",
+      metaDuration: "Thời lượng",
+      durationMinutesUnit: "phút",
+      metaDevice: "Thiết bị âm thanh",
+      headphoneMode: "Tai nghe Dual-Stream",
+      speakerMode: "Chế độ loa ngoài",
+      metaParticipants: "Người tham gia",
+      metaModel: "Model AI",
+      dueLabel: "Hạn",
+      emptyItems: "Chưa ghi nhận",
+      transcriptHeading: "Toàn bộ Transcript",
+      pageFooter: "SumMeet • Trang {page}/{total}",
     },
     settings: {
       title: "Cài đặt",
@@ -537,6 +573,10 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       recordingActive: "Đang có một bản ghi âm chạy. Hãy dừng bản ghi âm đó trước.",
       recordingFailed: "Thao tác ghi âm không thành công. Vui lòng thử lại.",
       unsupportedMedia: "Không thể giải mã file này. Hãy dùng định dạng WAV, MP3, AAC, M4A, OGG hoặc FLAC.",
+      exportFailed: "Không thể xuất tệp vào thư mục Tải về. Vui lòng thử lại.",
+      exportTooLarge: "Tệp xuất vượt quá giới hạn dung lượng 64 MB.",
+      downloadsUnavailable: "Không tìm thấy thư mục Tải về của hệ điều hành.",
+      audioFileNotFound: "Không tìm thấy tệp âm thanh gốc cho cuộc họp này.",
     },
     update: {
       title: "Có bản cập nhật mới",
@@ -758,11 +798,27 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       markdownTab: "Markdown (.md)",
       pdfTab: "PDF",
       downloadMarkdown: "Download .md",
+      downloadPdf: "Download PDF",
+      downloadAudio: "Download Audio",
       copyMarkdown: "Copy",
       copied: "Copied!",
       downloaded: "Downloaded .md!",
+      savedToDownloads: 'Saved "{fileName}" to Downloads!',
+      includeTranscript: "Include Transcript",
       markdownPreview: "Preview",
       printPdfButton: "Print / PDF",
+      metaDate: "Date",
+      metaDuration: "Duration",
+      durationMinutesUnit: "mins",
+      metaDevice: "Audio Device",
+      headphoneMode: "Headphone/AirPods Dual-Stream",
+      speakerMode: "Speaker Mode",
+      metaParticipants: "Participants",
+      metaModel: "AI Model",
+      dueLabel: "Due",
+      emptyItems: "None recorded",
+      transcriptHeading: "Full Transcript",
+      pageFooter: "SumMeet • Page {page}/{total}",
     },
     settings: {
       title: "Settings",
@@ -820,6 +876,10 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       recordingActive: "A recording is already running. Stop it first.",
       recordingFailed: "The recording operation failed. Please try again.",
       unsupportedMedia: "Could not decode this file. Use WAV, MP3, AAC, M4A, OGG or FLAC.",
+      exportFailed: "Could not save the exported file to Downloads. Please try again.",
+      exportTooLarge: "The exported file exceeds the 64 MB size limit.",
+      downloadsUnavailable: "Could not access the operating system Downloads folder.",
+      audioFileNotFound: "Could not find the audio file for this meeting.",
     },
     update: {
       title: "Update available",

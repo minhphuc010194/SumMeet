@@ -48,6 +48,12 @@ import {
   listRecordings,
   type RecordingFile,
 } from "@/services/audio/recording-commands";
+import {
+  clearCachedMeetingAudio,
+  formatRecordingDateShort,
+  formatRecordingDateTime,
+  removeCachedMeetingAudio,
+} from "@/services/export/export-service";
 import { useMeetingStore } from "@/store/meeting-store";
 import {
   applyTheme,
@@ -166,10 +172,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
     const knownIds = new Set(currentMeetings.map((m) => m.id));
     for (const file of [...listing.data.files].reverse()) {
       if (knownIds.has(file.meetingId)) continue;
-      const timeLabel = new Date(file.createdAtMs).toLocaleTimeString(
-        locale === "vi" ? "vi-VN" : "en-US",
-        { hour: "2-digit", minute: "2-digit", second: "2-digit" }
-      );
+      const timeLabel = formatRecordingDateTime(file.createdAtMs, locale);
       createMeetingSession({
         id: file.meetingId,
         createdAt: new Date(file.createdAtMs).toISOString(),
@@ -189,7 +192,12 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
         convertFileSrc(file.wavPath)
       );
     }
-  }, [dict.recorder.sessionTitle, dict.recorder.uploadedFileSource, locale]);
+  }, [
+    dict.recorder.sessionTitle,
+    dict.recorder.uploadedFileSource,
+    dict.transcript.defaultMicSpeaker,
+    locale,
+  ]);
 
   useEffect(() => {
     void refreshDiskFiles();
@@ -204,6 +212,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
       triggerToast(deleted.error ?? dict.errors.recordingFailed);
       return;
     }
+    removeCachedMeetingAudio(meetingId);
     deleteMeeting(meetingId);
     await refreshDiskFiles();
     triggerToast(
@@ -217,6 +226,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
       triggerToast(cleared.error ?? dict.errors.recordingFailed);
       return;
     }
+    clearCachedMeetingAudio();
     clearAllMeetings();
     await refreshDiskFiles();
     triggerToast(dict.workspace.allCleared);
@@ -413,6 +423,10 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                             {mtg.title}
                           </h2>
                           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400">
+                            <span>
+                              {formatRecordingDateShort(mtg.createdAt, locale)}
+                            </span>
+                            <span>•</span>
                             <span className="inline-flex items-center gap-1">
                               <Clock className="h-3 w-3" />
                               {mtg.durationSeconds}s
@@ -504,9 +518,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
                       <div className="mt-1 flex items-center justify-between text-[10px] text-slate-400">
                         <span>{formatBytes(file.sizeBytes)}</span>
                         <span>
-                          {new Date(file.createdAtMs).toLocaleTimeString(
-                            locale === "vi" ? "vi-VN" : "en-US"
-                          )}
+                          {formatRecordingDateTime(file.createdAtMs, locale)}
                         </span>
                       </div>
 
@@ -576,6 +588,16 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
           <div className="ml-auto flex items-center gap-2 lg:mt-auto lg:ml-0 lg:flex-col">
             <UpdateButton locale={locale} />
             {themeToggle}
+            <button
+              type="button"
+              disabled={!activeMeeting}
+              onClick={() => setModalMode("export")}
+              title={dict.nav.exportShare}
+              aria-label={dict.nav.exportShare}
+              className="rounded-lg border border-orange-500/40 bg-orange-500/15 p-1.5 text-orange-200 transition hover:bg-orange-600 hover:text-white disabled:opacity-40"
+            >
+              <Share2 className="h-4 w-4" />
+            </button>
             <button
               type="button"
               onClick={() => setIsSettingsOpen(true)}
@@ -828,7 +850,7 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
       </main>
 
       {/* Modals */}
-      {activeMeeting && (
+      {activeMeeting && modalMode && (
         <CalendarAndExportModal
           mode={modalMode}
           onClose={() => setModalMode(null)}
