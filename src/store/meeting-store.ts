@@ -21,6 +21,7 @@ import {
 import { PROMPT_VERSION } from "@/services/ai/prompts";
 import {
   DEFAULT_OPENROUTER_MODEL,
+  DEFAULT_OPENROUTER_TEXT_MODEL,
   callOpenRouterChat,
 } from "@/services/ai/provider-registry";
 
@@ -30,6 +31,7 @@ const INITIAL_CALENDAR_EVENTS: CalendarMeetingEvent[] = [];
 
 const DEFAULT_SETTINGS: AIProviderSettings = {
   openRouterModel: DEFAULT_OPENROUTER_MODEL,
+  openRouterTextModel: DEFAULT_OPENROUTER_TEXT_MODEL,
   transcriptionLanguage: "vi",
   callDetectionEnabled: true,
 };
@@ -418,15 +420,19 @@ export const useMeetingStore = create<MeetingStoreState>()(
     }),
     {
       name: "summarize-bot-clean-v4",
-      version: 2,
+      version: 3,
       migrate: (persisted, version) => {
         const previous = persisted as PersistedMeetingState;
         const keepsSavedSettings = version >= 1;
+        const savedSettings = keepsSavedSettings ? previous.settings : undefined;
+        const savedTextModel = savedSettings?.openRouterTextModel?.trim();
         return {
           ...previous,
           settings: {
             ...DEFAULT_SETTINGS,
-            ...(keepsSavedSettings ? previous.settings : {}),
+            ...savedSettings,
+            openRouterTextModel:
+              savedTextModel || DEFAULT_OPENROUTER_TEXT_MODEL,
             transcriptionLanguage:
               previous.settings?.transcriptionLanguage ??
               DEFAULT_SETTINGS.transcriptionLanguage,

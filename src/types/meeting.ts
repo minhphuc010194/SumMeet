@@ -138,6 +138,7 @@ export interface Meeting {
 
 export interface AIProviderSettings {
   openRouterModel: string;
+  openRouterTextModel: string;
   transcriptionLanguage: "vi" | "en" | "auto";
   callDetectionEnabled: boolean;
 }

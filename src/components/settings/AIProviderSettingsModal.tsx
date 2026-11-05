@@ -6,7 +6,10 @@ import { ModalDialog } from "@/components/common/ModalDialog";
 import { OpenRouterKeyForm } from "@/components/onboarding/OpenRouterKeyForm";
 import { UpdateSettingsSection } from "@/components/update/UpdateEntryPoints";
 import type { Dictionary } from "@/i18n/dictionaries";
-import { DEFAULT_OPENROUTER_MODEL } from "@/services/ai/provider-registry";
+import {
+  DEFAULT_OPENROUTER_MODEL,
+  DEFAULT_OPENROUTER_TEXT_MODEL,
+} from "@/services/ai/provider-registry";
 import {
   getAutostartEnabled,
   setAutostartEnabled,
@@ -23,7 +26,10 @@ interface AIProviderSettingsModalProps {
 
 type EditableSettings = Pick<
   AIProviderSettings,
-  "openRouterModel" | "transcriptionLanguage" | "callDetectionEnabled"
+  | "openRouterModel"
+  | "openRouterTextModel"
+  | "transcriptionLanguage"
+  | "callDetectionEnabled"
 >;
 
 const FIELD_CLASS =
@@ -66,6 +72,8 @@ export function AIProviderSettingsModal({
     updateSettings({
       openRouterModel:
         formState.openRouterModel.trim() || DEFAULT_OPENROUTER_MODEL,
+      openRouterTextModel:
+        formState.openRouterTextModel.trim() || DEFAULT_OPENROUTER_TEXT_MODEL,
       transcriptionLanguage: formState.transcriptionLanguage,
       callDetectionEnabled: formState.callDetectionEnabled,
     });
@@ -141,26 +149,52 @@ export function AIProviderSettingsModal({
             </div>
 
             <div className="flex flex-col">
-              <label htmlFor="settings-language" className={LABEL_CLASS}>
-                {dict.settings.languageLabel}
+              <label
+                htmlFor="settings-openrouter-text-model"
+                className={LABEL_CLASS}
+              >
+                {dict.settings.textModelLabel}
               </label>
-              <select
-                id="settings-language"
-                value={formState.transcriptionLanguage}
+              <input
+                id="settings-openrouter-text-model"
+                type="text"
+                value={formState.openRouterTextModel}
                 onChange={(e) =>
                   setFormState({
                     ...formState,
-                    transcriptionLanguage: e.target
-                      .value as AIProviderSettings["transcriptionLanguage"],
+                    openRouterTextModel: e.target.value,
                   })
                 }
+                placeholder={DEFAULT_OPENROUTER_TEXT_MODEL}
+                spellCheck={false}
                 className={FIELD_CLASS}
-              >
-                <option value="vi">{dict.settings.languageOptions.vi}</option>
-                <option value="en">{dict.settings.languageOptions.en}</option>
-                <option value="auto">{dict.settings.languageOptions.auto}</option>
-              </select>
+              />
+              <p className="mt-1 text-[11px] text-slate-500">
+                {dict.settings.textModelHint}
+              </p>
             </div>
+          </div>
+
+          <div className="flex flex-col">
+            <label htmlFor="settings-language" className={LABEL_CLASS}>
+              {dict.settings.languageLabel}
+            </label>
+            <select
+              id="settings-language"
+              value={formState.transcriptionLanguage}
+              onChange={(e) =>
+                setFormState({
+                  ...formState,
+                  transcriptionLanguage: e.target
+                    .value as AIProviderSettings["transcriptionLanguage"],
+                })
+              }
+              className={FIELD_CLASS}
+            >
+              <option value="vi">{dict.settings.languageOptions.vi}</option>
+              <option value="en">{dict.settings.languageOptions.en}</option>
+              <option value="auto">{dict.settings.languageOptions.auto}</option>
+            </select>
           </div>
 
           <div className="flex flex-col">

@@ -63,7 +63,7 @@ export function AskFredChatPanel({
     try {
       const result = await answerMeetingQuestion({
         apiKey: openRouterKey,
-        model: settings.openRouterModel,
+        model: settings.openRouterTextModel,
         meetingTitle: meeting.title,
         segments: meeting.segments,
         chatHistory: meeting.chatMessages,

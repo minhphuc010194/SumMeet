@@ -22,6 +22,7 @@ import {
 
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 export const DEFAULT_OPENROUTER_MODEL = "google/gemini-3.1-flash-lite";
+export const DEFAULT_OPENROUTER_TEXT_MODEL = "openai/gpt-6-luna";
 
 interface ExternalRequestOptions {
   providerName: string;
@@ -244,9 +245,8 @@ export async function generateSummaryWithFallback(params: {
   try {
     const result = await callOpenRouterChat({
       apiKey: params.apiKey,
-      model: params.model,
+      model: params.model.trim() || DEFAULT_OPENROUTER_TEXT_MODEL,
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.2,
       timeoutMs: 90000,
       providerName: "OpenRouter-Summary",
     });
@@ -547,9 +547,8 @@ export async function answerMeetingQuestion(params: {
   try {
     const result = await callOpenRouterChat({
       apiKey: params.apiKey,
-      model: params.model,
+      model: params.model.trim() || DEFAULT_OPENROUTER_TEXT_MODEL,
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.3,
       timeoutMs: 45000,
       providerName: "OpenRouter-AskBot",
     });

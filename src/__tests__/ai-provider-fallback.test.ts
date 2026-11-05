@@ -268,6 +268,7 @@ describe("OpenRouter summary with offline fallback", () => {
       "X-OpenRouter-Title": "SumMeet",
     });
     expect(requestBody(fetchMock).model).toBe(MODEL);
+    expect(requestBody(fetchMock)).not.toHaveProperty("temperature");
   });
 
   it.each(["vi", "en"] as const)(
@@ -362,11 +363,14 @@ describe("OpenRouter summary with offline fallback", () => {
   });
 
   it("uses the default model when the configured model is blank", async () => {
-    fetchMock.mockResolvedValue(completionResponse(JSON.stringify({ overview: "ok" })));
+    fetchMock.mockResolvedValue(
+      completionResponse(JSON.stringify({ overview: "ok" }), "openai/gpt-6-luna")
+    );
 
     await generateSummaryWithFallback({ ...SUMMARY_PARAMS, model: "  " });
 
-    expect(requestBody(fetchMock).model).toBe("google/gemini-3.1-flash-lite");
+    expect(requestBody(fetchMock).model).toBe("openai/gpt-6-luna");
+    expect(requestBody(fetchMock)).not.toHaveProperty("temperature");
     expect(JSON.stringify(requestBody(fetchMock))).not.toContain("gemini-2.5");
   });
 
@@ -490,6 +494,18 @@ describe("OpenRouter meeting chat", () => {
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe(
       `Bearer ${API_KEY}`
     );
+    expect(requestBody(fetchMock)).not.toHaveProperty("temperature");
+  });
+
+  it("uses the default text model when the configured model is blank", async () => {
+    fetchMock.mockResolvedValue(completionResponse("ok", "openai/gpt-6-luna"));
+
+    const result = await answerMeetingQuestion({ ...CHAT_PARAMS, model: "  " });
+
+    expect(result.success).toBe(true);
+    expect(requestBody(fetchMock).model).toBe("openai/gpt-6-luna");
+    expect(requestBody(fetchMock)).not.toHaveProperty("temperature");
+    expect(result.data?.providerUsed).toBe("OpenRouter (openai/gpt-6-luna)");
   });
 
   it("sanitizes injection attempts before they reach the prompt", async () => {

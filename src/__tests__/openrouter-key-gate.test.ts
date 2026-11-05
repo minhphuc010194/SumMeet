@@ -206,6 +206,7 @@ describe("OpenRouter key gate store logic", () => {
     const state = useMeetingStore.getState();
     expect(state.settings).toEqual({
       openRouterModel: "google/gemini-3.1-flash-lite",
+      openRouterTextModel: "openai/gpt-6-luna",
       transcriptionLanguage: "en",
       callDetectionEnabled: true,
     });

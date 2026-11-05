@@ -411,7 +411,7 @@ export function RecordingControlBar({
 
     const summary = await generateSummaryWithFallback({
       apiKey: openRouterKey,
-      model: settings.openRouterModel,
+      model: settings.openRouterTextModel,
       meetingId: meeting.id,
       meetingTitle: meeting.title,
       templateId: meeting.summary.templateId,

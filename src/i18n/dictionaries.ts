@@ -201,6 +201,8 @@ export interface Dictionary {
     subtitle: string;
     modelLabel: string;
     modelHint: string;
+    textModelLabel: string;
+    textModelHint: string;
     languageLabel: string;
     languageOptions: {
       vi: string;
@@ -482,8 +484,10 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
     settings: {
       title: "Cài đặt",
       subtitle: "Cấu hình OpenRouter, ngôn ngữ và ứng dụng.",
-      modelLabel: "Model OpenRouter:",
-      modelHint: "Mặc định: google/gemini-3.1-flash-lite",
+      modelLabel: "Model gỡ băng âm thanh:",
+      modelHint: "Mặc định: google/gemini-3.1-flash-lite (hỗ trợ âm thanh)",
+      textModelLabel: "Model tóm tắt & hỏi đáp:",
+      textModelHint: "Mặc định: openai/gpt-6-luna",
       languageLabel: "Ngôn ngữ nhận diện:",
       languageOptions: {
         vi: "Tiếng Việt",
@@ -763,8 +767,10 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
     settings: {
       title: "Settings",
       subtitle: "Configure OpenRouter, language, and app behavior.",
-      modelLabel: "OpenRouter model:",
-      modelHint: "Default: google/gemini-3.1-flash-lite",
+      modelLabel: "Audio transcription model:",
+      modelHint: "Default: google/gemini-3.1-flash-lite (audio input)",
+      textModelLabel: "Summary & chat model:",
+      textModelHint: "Default: openai/gpt-6-luna",
       languageLabel: "Transcription language:",
       languageOptions: {
         vi: "Vietnamese",
