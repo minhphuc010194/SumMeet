@@ -430,14 +430,14 @@ export async function exportMeetingMarkdown(params: {
   meeting: Meeting;
   locale: SupportedLocale;
   includeTranscript?: boolean;
-}): Promise<ApiResponse<ExportedFile>> {
+}): Promise<ApiResponse<ExportedFile | null>> {
   try {
     const markdown = generateMeetingMarkdown(params.meeting, {
       locale: params.locale,
       includeTranscript: Boolean(params.includeTranscript),
     });
     const contentBase64 = bytesToBase64(new TextEncoder().encode(markdown));
-    const data = await invoke<ExportedFile>("save_export_file", {
+    const data = await invoke<ExportedFile | null>("save_export_file", {
       fileName: buildExportFileStem(params.meeting),
       format: "md",
       contentBase64,
@@ -460,7 +460,7 @@ export async function exportMeetingPdf(params: {
   meeting: Meeting;
   locale: SupportedLocale;
   includeTranscript?: boolean;
-}): Promise<ApiResponse<ExportedFile>> {
+}): Promise<ApiResponse<ExportedFile | null>> {
   try {
     const pdfBytes = await renderMeetingSummaryPdfBytes({
       meeting: params.meeting,
@@ -468,7 +468,7 @@ export async function exportMeetingPdf(params: {
       includeTranscript: Boolean(params.includeTranscript),
     });
     const contentBase64 = bytesToBase64(pdfBytes);
-    const data = await invoke<ExportedFile>("save_export_file", {
+    const data = await invoke<ExportedFile | null>("save_export_file", {
       fileName: buildExportFileStem(params.meeting),
       format: "pdf",
       contentBase64,
@@ -490,13 +490,13 @@ export async function exportMeetingPdf(params: {
 export async function downloadMeetingAudio(params: {
   meeting: Meeting;
   locale: SupportedLocale;
-}): Promise<ApiResponse<ExportedFile>> {
+}): Promise<ApiResponse<ExportedFile | null>> {
   const stem = buildExportFileStem(params.meeting);
   const isBlobUpload = Boolean(params.meeting.audioDataUrl?.startsWith("blob:"));
 
   if (!isBlobUpload) {
     try {
-      const data = await invoke<ExportedFile>("export_recording_audio", {
+      const data = await invoke<ExportedFile | null>("export_recording_audio", {
         meetingId: params.meeting.id,
         suggestedStem: stem,
       });
@@ -528,7 +528,7 @@ export async function downloadMeetingAudio(params: {
   }
 
   try {
-    const data = await invoke<ExportedFile>("save_export_file", {
+    const data = await invoke<ExportedFile | null>("save_export_file", {
       fileName: stem,
       format: cached.format,
       contentBase64: bytesToBase64(cached.bytes),

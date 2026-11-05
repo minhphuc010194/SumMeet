@@ -83,9 +83,11 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(mic::MicRecorder::default())
         .setup(|app| {
-            let recordings_dir = app.path().app_data_dir()?.join("recordings");
+            let app_data_dir = app.path().app_data_dir()?;
+            let recordings_dir = app_data_dir.join("recordings");
             std::fs::create_dir_all(&recordings_dir)?;
             app.manage(recordings::RecordingsDir(recordings_dir));
             let downloads_dir = app.path().download_dir().ok();
@@ -93,6 +95,9 @@ pub fn run() {
                 let _ = std::fs::create_dir_all(dir);
             }
             app.manage(exports::DownloadsDir(downloads_dir));
+            app.manage(exports::ExportPrefsStore::new(
+                app_data_dir.join("export_prefs.json"),
+            ));
             mic_activity::spawn_watcher(app.handle().clone());
 
             let click_opens_window = !cfg!(target_os = "macos");

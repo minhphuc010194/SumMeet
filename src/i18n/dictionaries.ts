@@ -195,7 +195,7 @@ export interface Dictionary {
     copyMarkdown: string;
     copied: string;
     downloaded: string;
-    savedToDownloads: string;
+    savedToPath: string;
     includeTranscript: string;
     markdownPreview: string;
     printPdfButton: string;
@@ -500,7 +500,7 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       copyMarkdown: "Sao chép",
       copied: "Đã chép!",
       downloaded: "Đã tải file .md!",
-      savedToDownloads: 'Đã lưu "{fileName}" vào thư mục Tải về!',
+      savedToPath: "Đã lưu tệp tại: {path}",
       includeTranscript: "Kèm toàn bộ Transcript",
       markdownPreview: "Xem trước",
       printPdfButton: "In / PDF",
@@ -573,7 +573,7 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       recordingActive: "Đang có một bản ghi âm chạy. Hãy dừng bản ghi âm đó trước.",
       recordingFailed: "Thao tác ghi âm không thành công. Vui lòng thử lại.",
       unsupportedMedia: "Không thể giải mã file này. Hãy dùng định dạng WAV, MP3, AAC, M4A, OGG hoặc FLAC.",
-      exportFailed: "Không thể xuất tệp vào thư mục Tải về. Vui lòng thử lại.",
+      exportFailed: "Không thể lưu tệp xuất. Vui lòng thử lại.",
       exportTooLarge: "Tệp xuất vượt quá giới hạn dung lượng 64 MB.",
       downloadsUnavailable: "Không tìm thấy thư mục Tải về của hệ điều hành.",
       audioFileNotFound: "Không tìm thấy tệp âm thanh gốc cho cuộc họp này.",
@@ -803,7 +803,7 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       copyMarkdown: "Copy",
       copied: "Copied!",
       downloaded: "Downloaded .md!",
-      savedToDownloads: 'Saved "{fileName}" to Downloads!',
+      savedToPath: "Saved file to: {path}",
       includeTranscript: "Include Transcript",
       markdownPreview: "Preview",
       printPdfButton: "Print / PDF",
@@ -876,7 +876,7 @@ export const DICTIONARIES: Record<SupportedLocale, Dictionary> = {
       recordingActive: "A recording is already running. Stop it first.",
       recordingFailed: "The recording operation failed. Please try again.",
       unsupportedMedia: "Could not decode this file. Use WAV, MP3, AAC, M4A, OGG or FLAC.",
-      exportFailed: "Could not save the exported file to Downloads. Please try again.",
+      exportFailed: "Could not save the exported file. Please try again.",
       exportTooLarge: "The exported file exceeds the 64 MB size limit.",
       downloadsUnavailable: "Could not access the operating system Downloads folder.",
       audioFileNotFound: "Could not find the audio file for this meeting.",
