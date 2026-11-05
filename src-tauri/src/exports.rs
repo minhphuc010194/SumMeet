@@ -1,9 +1,11 @@
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fs::{self, OpenOptions};
 use std::io::{ErrorKind, Write};
 use std::path::{Path, PathBuf};
-use tauri::State;
+use std::sync::Mutex;
+use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::recordings::RecordingsDir;
 
@@ -14,6 +16,93 @@ const MAX_COLLISION_ATTEMPTS: u32 = 1000;
 
 pub struct DownloadsDir(pub Option<PathBuf>);
 
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportPrefsFile {
+    last_export_dir: Option<String>,
+}
+
+pub struct ExportPrefsStore {
+    prefs_path: PathBuf,
+    last_export_dir: Mutex<Option<PathBuf>>,
+}
+
+impl ExportPrefsStore {
+    pub fn new(prefs_path: PathBuf) -> Self {
+        let initial = read_saved_export_dir(&prefs_path);
+        Self {
+            prefs_path,
+            last_export_dir: Mutex::new(initial),
+        }
+    }
+
+    pub fn resolve_initial_dir(&self, downloads_dir: Option<&Path>) -> Option<PathBuf> {
+        let saved = self
+            .last_export_dir
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        if let Some(dir) = saved {
+            if dir.is_dir() {
+                return Some(dir);
+            }
+        }
+        if let Some(dl) = downloads_dir {
+            if dl.is_dir() {
+                return Some(dl.to_path_buf());
+            }
+        }
+        None
+    }
+
+    pub fn record_saved_dir(&self, dir: &Path) {
+        if !dir.is_dir() {
+            return;
+        }
+        let dir_buf = dir.to_path_buf();
+        let mut guard = self
+            .last_export_dir
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *guard = Some(dir_buf.clone());
+        let payload = match serde_json::to_vec(&ExportPrefsFile {
+            last_export_dir: Some(dir_buf.to_string_lossy().into_owned()),
+        }) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                eprintln!("[ExportPrefs] Persist failed: {e}");
+                return;
+            }
+        };
+        if let Err(e) = write_bytes_atomic(&self.prefs_path, &payload) {
+            eprintln!("[ExportPrefs] Persist failed: {e}");
+        }
+    }
+}
+
+fn read_saved_export_dir(prefs_path: &Path) -> Option<PathBuf> {
+    let raw = match fs::read_to_string(prefs_path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == ErrorKind::NotFound => return None,
+        Err(e) => {
+            eprintln!("[ExportPrefs] Read failed: {e}");
+            return None;
+        }
+    };
+    let parsed: ExportPrefsFile = match serde_json::from_str(&raw) {
+        Ok(data) => data,
+        Err(e) => {
+            eprintln!("[ExportPrefs] Parse failed: {e}");
+            return None;
+        }
+    };
+    let dir_str = parsed.last_export_dir?;
+    if dir_str.trim().is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(dir_str))
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExportedFile {
@@ -22,38 +111,44 @@ pub struct ExportedFile {
     pub size_bytes: u64,
 }
 
-struct ExportTarget<'a> {
-    dir: &'a Path,
-    stem: &'a str,
-    ext: &'a str,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SaveDialogRequest {
+    pub initial_dir: Option<PathBuf>,
+    pub default_file_name: String,
+    pub filter_label: &'static str,
+    pub ext: &'static str,
+}
+
+#[derive(Clone, Copy)]
+struct ExportDialogContext<'a> {
+    downloads_dir: Option<&'a Path>,
+    prefs: &'a ExportPrefsStore,
 }
 
 struct SaveExportInput<'a> {
+    ctx: ExportDialogContext<'a>,
     file_name: &'a str,
     format: &'a str,
     content_base64: &'a str,
 }
 
-struct AudioExportDirs<'a> {
-    recordings_dir: &'a Path,
-    downloads_dir: Option<&'a Path>,
-}
-
 struct AudioExportInput<'a> {
+    ctx: ExportDialogContext<'a>,
+    recordings_dir: &'a Path,
     meeting_id: &'a str,
     suggested_stem: Option<&'a str>,
 }
 
-fn validate_export_format(format: &str) -> Result<&'static str, String> {
+fn validate_export_format(format: &str) -> Result<(&'static str, &'static str), String> {
     match format {
-        "md" => Ok("md"),
-        "pdf" => Ok("pdf"),
-        "wav" => Ok("wav"),
-        "mp3" => Ok("mp3"),
-        "aac" => Ok("aac"),
-        "m4a" => Ok("m4a"),
-        "ogg" => Ok("ogg"),
-        "flac" => Ok("flac"),
+        "md" => Ok(("md", "Markdown")),
+        "pdf" => Ok(("pdf", "PDF")),
+        "wav" => Ok(("wav", "WAV Audio")),
+        "mp3" => Ok(("mp3", "MP3 Audio")),
+        "aac" => Ok(("aac", "AAC Audio")),
+        "m4a" => Ok(("m4a", "M4A Audio")),
+        "ogg" => Ok(("ogg", "OGG Audio")),
+        "flac" => Ok(("flac", "FLAC Audio")),
         _ => Err("invalid_export_format".to_string()),
     }
 }
@@ -116,40 +211,160 @@ pub fn sanitize_export_stem(raw: &str) -> Result<String, String> {
     Ok(stem)
 }
 
-fn create_unique_export_file(target: ExportTarget<'_>) -> Result<(fs::File, PathBuf), String> {
-    fs::create_dir_all(target.dir).map_err(|e| e.to_string())?;
-    for attempt in 0..MAX_COLLISION_ATTEMPTS {
-        let file_name = if attempt == 0 {
-            format!("{}.{}", target.stem, target.ext)
-        } else {
-            format!("{} ({attempt}).{}", target.stem, target.ext)
-        };
-        let candidate = target.dir.join(&file_name);
-        if candidate.parent() != Some(target.dir) {
-            return Err("invalid_file_name".to_string());
+fn non_empty_parent(path: &Path) -> Option<&Path> {
+    let parent = path.parent()?;
+    if parent.as_os_str().is_empty() {
+        return None;
+    }
+    Some(parent)
+}
+
+fn create_sibling_temp_file(parent: &Path) -> Result<(fs::File, PathBuf), String> {
+    fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    let temp_path = parent.join(format!(".summeet-export-{}.tmp", uuid::Uuid::new_v4()));
+    let file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)
+        .map_err(|e| e.to_string())?;
+    Ok((file, temp_path))
+}
+
+fn write_bytes_atomic(target_path: &Path, bytes: &[u8]) -> Result<u64, String> {
+    let Some(parent) = non_empty_parent(target_path) else {
+        return Err("invalid_file_name".to_string());
+    };
+    let (mut temp_file, temp_path) = create_sibling_temp_file(parent)?;
+    if let Err(e) = temp_file.write_all(bytes).and_then(|_| temp_file.flush()) {
+        drop(temp_file);
+        let _ = fs::remove_file(&temp_path);
+        return Err(e.to_string());
+    }
+    drop(temp_file);
+    if let Err(e) = fs::rename(&temp_path, target_path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(e.to_string());
+    }
+    Ok(bytes.len() as u64)
+}
+
+fn copy_reader_atomic(target_path: &Path, mut source: fs::File) -> Result<u64, String> {
+    let Some(parent) = non_empty_parent(target_path) else {
+        return Err("invalid_file_name".to_string());
+    };
+    let (mut temp_file, temp_path) = create_sibling_temp_file(parent)?;
+    let size_bytes = match std::io::copy(&mut source, &mut temp_file).and_then(|n| {
+        temp_file.flush()?;
+        Ok(n)
+    }) {
+        Ok(n) => n,
+        Err(e) => {
+            drop(temp_file);
+            let _ = fs::remove_file(&temp_path);
+            return Err(e.to_string());
         }
-        match OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&candidate)
-        {
-            Ok(file) => return Ok((file, candidate)),
-            Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+    };
+    drop(source);
+    drop(temp_file);
+    if let Err(e) = fs::rename(&temp_path, target_path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(e.to_string());
+    }
+    Ok(size_bytes)
+}
+
+fn resolve_dialog_target_path(chosen_path: PathBuf, ext: &str) -> Result<PathBuf, String> {
+    if chosen_path.as_os_str().is_empty() {
+        return Err("invalid_file_name".to_string());
+    }
+    let path_str = chosen_path.to_string_lossy();
+    let has_trailing_sep = path_str.ends_with('/') || path_str.ends_with('\\');
+    let ends_with_dot_dir = path_str.ends_with("/.") || path_str.ends_with("\\.");
+    let is_directory_target = has_trailing_sep || ends_with_dot_dir || chosen_path.is_dir();
+    if is_directory_target {
+        return Err("invalid_file_name".to_string());
+    }
+    let Some(parent) = non_empty_parent(&chosen_path) else {
+        return Err("invalid_file_name".to_string());
+    };
+    let Some(raw_name) = chosen_path.file_name() else {
+        return Err("invalid_file_name".to_string());
+    };
+    let file_name_lossy = raw_name.to_string_lossy();
+    if file_name_lossy.trim().is_empty() {
+        return Err("invalid_file_name".to_string());
+    }
+
+    let has_matching_ext = chosen_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case(ext));
+    if has_matching_ext {
+        return Ok(chosen_path);
+    }
+
+    for attempt in 0..MAX_COLLISION_ATTEMPTS {
+        let candidate_name = if attempt == 0 {
+            format!("{file_name_lossy}.{ext}")
+        } else {
+            format!("{file_name_lossy} ({attempt}).{ext}")
+        };
+        let candidate = parent.join(candidate_name);
+        if candidate.is_dir() {
+            continue;
+        }
+        match fs::symlink_metadata(&candidate) {
+            Ok(_) => continue,
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(candidate),
             Err(e) => return Err(e.to_string()),
         }
     }
     Err("export_collision_limit".to_string())
 }
 
-fn save_export_in_dir(
-    downloads_dir: Option<&Path>,
+fn build_exported_file(target_path: &Path, size_bytes: u64) -> ExportedFile {
+    ExportedFile {
+        file_name: target_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned(),
+        saved_path: target_path.to_string_lossy().into_owned(),
+        size_bytes,
+    }
+}
+
+fn prompt_save_dialog(
+    app: &AppHandle,
+    request: SaveDialogRequest,
+) -> Result<Option<PathBuf>, String> {
+    let mut dialog = app
+        .dialog()
+        .file()
+        .set_file_name(&request.default_file_name)
+        .add_filter(request.filter_label, &[request.ext]);
+    if let Some(ref dir) = request.initial_dir {
+        dialog = dialog.set_directory(dir);
+    }
+    #[cfg(desktop)]
+    if let Some(window) = app.get_webview_window("main") {
+        dialog = dialog.set_parent(&window);
+    }
+    match dialog.blocking_save_file() {
+        Some(fp) => Ok(Some(fp.into_path().map_err(|e| e.to_string())?)),
+        None => Ok(None),
+    }
+}
+
+fn save_export_with_picker<F>(
     input: SaveExportInput<'_>,
-) -> Result<ExportedFile, String> {
-    let ext = validate_export_format(input.format)?;
+    picker: F,
+) -> Result<Option<ExportedFile>, String>
+where
+    F: FnOnce(SaveDialogRequest) -> Result<Option<PathBuf>, String>,
+{
+    let (ext, filter_label) = validate_export_format(input.format)?;
     let stem = sanitize_export_stem(input.file_name)?;
-    let Some(dir) = downloads_dir else {
-        return Err("downloads_unavailable".to_string());
-    };
     if input.content_base64.len() > MAX_EXPORT_BASE64_LEN {
         return Err("export_too_large".to_string());
     }
@@ -163,105 +378,108 @@ fn save_export_in_dir(
         return Err("invalid_pdf_data".to_string());
     }
 
-    let (mut file, saved_path) = create_unique_export_file(ExportTarget {
-        dir,
-        stem: &stem,
+    let request = SaveDialogRequest {
+        initial_dir: input.ctx.prefs.resolve_initial_dir(input.ctx.downloads_dir),
+        default_file_name: format!("{stem}.{ext}"),
+        filter_label,
         ext,
-    })?;
-    if let Err(e) = file.write_all(&bytes).and_then(|_| file.flush()) {
-        let _ = fs::remove_file(&saved_path);
-        return Err(e.to_string());
+    };
+    let Some(chosen_path) = picker(request)? else {
+        return Ok(None);
+    };
+    let target_path = resolve_dialog_target_path(chosen_path, ext)?;
+    if target_path.is_dir() {
+        return Err("invalid_file_name".to_string());
     }
-
-    Ok(ExportedFile {
-        file_name: saved_path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned(),
-        saved_path: saved_path.to_string_lossy().into_owned(),
-        size_bytes: bytes.len() as u64,
-    })
+    let size_bytes = write_bytes_atomic(&target_path, &bytes)?;
+    if let Some(parent) = non_empty_parent(&target_path) {
+        input.ctx.prefs.record_saved_dir(parent);
+    }
+    Ok(Some(build_exported_file(&target_path, size_bytes)))
 }
 
-fn export_recording_in_dirs(
-    dirs: AudioExportDirs<'_>,
+fn export_recording_with_picker<F>(
     input: AudioExportInput<'_>,
-) -> Result<ExportedFile, String> {
-    let source_path = crate::recordings::recording_path(dirs.recordings_dir, input.meeting_id)?;
-    let mut source = fs::File::open(&source_path).map_err(|e| {
+    picker: F,
+) -> Result<Option<ExportedFile>, String>
+where
+    F: FnOnce(SaveDialogRequest) -> Result<Option<PathBuf>, String>,
+{
+    let source_path = crate::recordings::recording_path(input.recordings_dir, input.meeting_id)?;
+    let source = fs::File::open(&source_path).map_err(|e| {
         if e.kind() == ErrorKind::NotFound {
             "recording_not_found".to_string()
         } else {
             e.to_string()
         }
     })?;
-    let Some(downloads_dir) = dirs.downloads_dir else {
-        return Err("downloads_unavailable".to_string());
-    };
     let raw_stem = input.suggested_stem.unwrap_or(input.meeting_id);
     let stem = sanitize_export_stem(raw_stem)?;
+    let (ext, filter_label) = validate_export_format("wav")?;
 
-    let (mut dest, saved_path) = create_unique_export_file(ExportTarget {
-        dir: downloads_dir,
-        stem: &stem,
-        ext: "wav",
-    })?;
-    let size_bytes = match std::io::copy(&mut source, &mut dest).and_then(|n| {
-        dest.flush()?;
-        Ok(n)
-    }) {
-        Ok(n) => n,
-        Err(e) => {
-            let _ = fs::remove_file(&saved_path);
-            return Err(e.to_string());
-        }
+    let request = SaveDialogRequest {
+        initial_dir: input.ctx.prefs.resolve_initial_dir(input.ctx.downloads_dir),
+        default_file_name: format!("{stem}.{ext}"),
+        filter_label,
+        ext,
     };
-
-    Ok(ExportedFile {
-        file_name: saved_path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned(),
-        saved_path: saved_path.to_string_lossy().into_owned(),
-        size_bytes,
-    })
+    let Some(chosen_path) = picker(request)? else {
+        return Ok(None);
+    };
+    let target_path = resolve_dialog_target_path(chosen_path, ext)?;
+    if target_path.is_dir() {
+        return Err("invalid_file_name".to_string());
+    }
+    let size_bytes = copy_reader_atomic(&target_path, source)?;
+    if let Some(parent) = non_empty_parent(&target_path) {
+        input.ctx.prefs.record_saved_dir(parent);
+    }
+    Ok(Some(build_exported_file(&target_path, size_bytes)))
 }
 
 #[tauri::command(async)]
 pub fn save_export_file(
+    app: AppHandle,
     file_name: String,
     format: String,
     content_base64: String,
     downloads: State<'_, DownloadsDir>,
-) -> Result<ExportedFile, String> {
-    save_export_in_dir(
-        downloads.0.as_deref(),
+    prefs: State<'_, ExportPrefsStore>,
+) -> Result<Option<ExportedFile>, String> {
+    save_export_with_picker(
         SaveExportInput {
+            ctx: ExportDialogContext {
+                downloads_dir: downloads.0.as_deref(),
+                prefs: &prefs,
+            },
             file_name: &file_name,
             format: &format,
             content_base64: &content_base64,
         },
+        |request| prompt_save_dialog(&app, request),
     )
 }
 
 #[tauri::command(async)]
 pub fn export_recording_audio(
+    app: AppHandle,
     meeting_id: String,
     suggested_stem: Option<String>,
     recordings: State<'_, RecordingsDir>,
     downloads: State<'_, DownloadsDir>,
-) -> Result<ExportedFile, String> {
-    export_recording_in_dirs(
-        AudioExportDirs {
-            recordings_dir: &recordings.0,
-            downloads_dir: downloads.0.as_deref(),
-        },
+    prefs: State<'_, ExportPrefsStore>,
+) -> Result<Option<ExportedFile>, String> {
+    export_recording_with_picker(
         AudioExportInput {
+            ctx: ExportDialogContext {
+                downloads_dir: downloads.0.as_deref(),
+                prefs: &prefs,
+            },
+            recordings_dir: &recordings.0,
             meeting_id: &meeting_id,
             suggested_stem: suggested_stem.as_deref(),
         },
+        |request| prompt_save_dialog(&app, request),
     )
 }
 
@@ -338,158 +556,342 @@ mod tests {
     }
 
     #[test]
-    fn test_save_export_rejects_disallowed_formats_invalid_pdf_unavailable_downloads_and_oversized_payloads() {
-        let dir = temp_dir();
-        let valid_md = BASE64_STANDARD.encode(b"# Summary");
+    fn test_export_prefs_defaults_to_downloads_persists_across_restarts_and_falls_back_when_deleted() {
+        let app_data_dir = temp_dir();
+        let downloads_dir = temp_dir();
+        let custom_dir = temp_dir();
+        let prefs_path = app_data_dir.join("export_prefs.json");
 
-        for bad_format in ["exe", "sh", "html", "js", "bat", ".md", "MD", ""] {
-            assert_eq!(
-                save_export_in_dir(
-                    Some(&dir),
-                    SaveExportInput {
-                        file_name: "notes",
-                        format: bad_format,
-                        content_base64: &valid_md,
-                    },
-                ),
-                Err("invalid_export_format".to_string())
-            );
-        }
-
+        let store = ExportPrefsStore::new(prefs_path.clone());
         assert_eq!(
-            save_export_in_dir(
-                None,
-                SaveExportInput {
-                    file_name: "notes",
-                    format: "md",
-                    content_base64: &valid_md,
-                },
-            ),
-            Err("downloads_unavailable".to_string())
+            store.resolve_initial_dir(Some(&downloads_dir)),
+            Some(downloads_dir.clone())
         );
+        assert_eq!(store.resolve_initial_dir(None), None);
 
-        assert_eq!(
-            save_export_in_dir(
-                Some(&dir),
-                SaveExportInput {
-                    file_name: "report",
-                    format: "pdf",
-                    content_base64: &BASE64_STANDARD.encode(b"NOT-A-PDF"),
-                },
-            ),
-            Err("invalid_pdf_data".to_string())
-        );
-
-        let oversized_b64 = "A".repeat(MAX_EXPORT_BASE64_LEN + 4);
-        assert_eq!(
-            save_export_in_dir(
-                Some(&dir),
-                SaveExportInput {
-                    file_name: "huge",
-                    format: "md",
-                    content_base64: &oversized_b64,
-                },
-            ),
-            Err("export_too_large".to_string())
-        );
-
-        let unpadded_over_max = BASE64_STANDARD.encode(vec![0u8; MAX_EXPORT_BYTES + 1]);
-        assert_eq!(unpadded_over_max.len(), MAX_EXPORT_BASE64_LEN);
-        assert_eq!(
-            save_export_in_dir(
-                Some(&dir),
-                SaveExportInput {
-                    file_name: "huge-decoded",
-                    format: "wav",
-                    content_base64: &unpadded_over_max,
-                },
-            ),
-            Err("export_too_large".to_string())
-        );
-
-        assert!(fs::read_dir(&dir).unwrap().next().is_none());
-        fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn test_save_export_creates_non_overwriting_collision_suffixes_and_validates_pdf() {
-        let dir = temp_dir();
-        let first = save_export_in_dir(
-            Some(&dir),
+        let ctx = ExportDialogContext {
+            downloads_dir: Some(&downloads_dir),
+            prefs: &store,
+        };
+        let mut seen_requests = Vec::new();
+        let first = save_export_with_picker(
             SaveExportInput {
+                ctx,
                 file_name: "Biên bản họp_2026-11-05_14-00",
                 format: "md",
                 content_base64: &BASE64_STANDARD.encode("Nội dung 1".as_bytes()),
             },
-        )
-        .unwrap();
-        let second = save_export_in_dir(
-            Some(&dir),
-            SaveExportInput {
-                file_name: "Biên bản họp_2026-11-05_14-00",
-                format: "md",
-                content_base64: &BASE64_STANDARD.encode("Nội dung 22".as_bytes()),
+            |req| {
+                seen_requests.push(req);
+                Ok(Some(custom_dir.join("Custom Notes.md")))
             },
         )
-        .unwrap();
-        let third = save_export_in_dir(
-            Some(&dir),
-            SaveExportInput {
-                file_name: "Biên bản họp_2026-11-05_14-00",
-                format: "md",
-                content_base64: &BASE64_STANDARD.encode("Nội dung 333".as_bytes()),
-            },
-        )
+        .unwrap()
         .unwrap();
 
-        assert_eq!(first.file_name, "Biên bản họp_2026-11-05_14-00.md");
-        assert_eq!(second.file_name, "Biên bản họp_2026-11-05_14-00 (1).md");
-        assert_eq!(third.file_name, "Biên bản họp_2026-11-05_14-00 (2).md");
+        assert_eq!(
+            seen_requests[0],
+            SaveDialogRequest {
+                initial_dir: Some(downloads_dir.clone()),
+                default_file_name: "Biên bản họp_2026-11-05_14-00.md".to_string(),
+                filter_label: "Markdown",
+                ext: "md",
+            }
+        );
+        assert_eq!(first.file_name, "Custom Notes.md");
+        assert_eq!(
+            first.saved_path,
+            custom_dir.join("Custom Notes.md").to_string_lossy()
+        );
         assert_eq!(
             fs::read_to_string(&first.saved_path).unwrap(),
             "Nội dung 1"
         );
+
+        let persisted: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&prefs_path).unwrap()).unwrap();
         assert_eq!(
-            fs::read_to_string(&second.saved_path).unwrap(),
-            "Nội dung 22"
-        );
-        assert_eq!(
-            fs::read_to_string(&third.saved_path).unwrap(),
-            "Nội dung 333"
+            persisted["lastExportDir"].as_str(),
+            Some(custom_dir.to_string_lossy().as_ref())
         );
 
-        let pdf_bytes = b"%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF";
-        let pdf = save_export_in_dir(
-            Some(&dir),
+        let second = save_export_with_picker(
             SaveExportInput {
-                file_name: "Summary",
-                format: "pdf",
-                content_base64: &BASE64_STANDARD.encode(pdf_bytes),
+                ctx,
+                file_name: "Next",
+                format: "md",
+                content_base64: &BASE64_STANDARD.encode(b"# Next"),
+            },
+            |req| {
+                seen_requests.push(req);
+                Ok(None)
             },
         )
         .unwrap();
-        assert_eq!(pdf.file_name, "Summary.pdf");
-        assert_eq!(pdf.size_bytes, pdf_bytes.len() as u64);
-        assert_eq!(fs::read(&pdf.saved_path).unwrap(), pdf_bytes);
+        assert!(second.is_none());
+        assert_eq!(seen_requests[1].initial_dir, Some(custom_dir.clone()));
 
-        for audio_ext in ["wav", "mp3", "aac", "m4a", "ogg", "flac"] {
-            let exported = save_export_in_dir(
-                Some(&dir),
+        let reloaded = ExportPrefsStore::new(prefs_path.clone());
+        assert_eq!(
+            reloaded.resolve_initial_dir(Some(&downloads_dir)),
+            Some(custom_dir.clone())
+        );
+
+        fs::remove_dir_all(&custom_dir).unwrap();
+        assert_eq!(
+            reloaded.resolve_initial_dir(Some(&downloads_dir)),
+            Some(downloads_dir.clone())
+        );
+        assert_eq!(reloaded.resolve_initial_dir(None), None);
+
+        fs::write(&prefs_path, b"{malformed-json").unwrap();
+        let malformed_store = ExportPrefsStore::new(prefs_path.clone());
+        assert_eq!(
+            malformed_store.resolve_initial_dir(Some(&downloads_dir)),
+            Some(downloads_dir.clone())
+        );
+
+        fs::write(&prefs_path, br#"{"lastExportDir":"   "}"#).unwrap();
+        let empty_store = ExportPrefsStore::new(prefs_path);
+        assert_eq!(
+            empty_store.resolve_initial_dir(Some(&downloads_dir)),
+            Some(downloads_dir.clone())
+        );
+
+        fs::remove_dir_all(&app_data_dir).unwrap();
+        fs::remove_dir_all(&downloads_dir).unwrap();
+    }
+
+    #[test]
+    fn test_cancel_in_save_and_audio_dialogs_writes_no_files_and_preserves_last_export_dir() {
+        let app_data_dir = temp_dir();
+        let downloads_dir = temp_dir();
+        let saved_dir = temp_dir();
+        let untouched_dir = temp_dir();
+        let recordings_dir = temp_dir();
+        let prefs_path = app_data_dir.join("export_prefs.json");
+        let store = ExportPrefsStore::new(prefs_path.clone());
+        store.record_saved_dir(&saved_dir);
+
+        let source_wav =
+            crate::recordings::recording_path(&recordings_dir, "mtg-2026-11-05_12-00-00-123")
+                .unwrap();
+        fs::write(&source_wav, b"RIFF-wav-bytes").unwrap();
+
+        let ctx = ExportDialogContext {
+            downloads_dir: Some(&downloads_dir),
+            prefs: &store,
+        };
+        let md_cancelled = save_export_with_picker(
+            SaveExportInput {
+                ctx,
+                file_name: "Summary",
+                format: "md",
+                content_base64: &BASE64_STANDARD.encode(b"# Cancelled"),
+            },
+            |req| {
+                assert_eq!(req.initial_dir, Some(saved_dir.clone()));
+                Ok(None)
+            },
+        )
+        .unwrap();
+        assert_eq!(md_cancelled, None);
+
+        let audio_cancelled = export_recording_with_picker(
+            AudioExportInput {
+                ctx,
+                recordings_dir: &recordings_dir,
+                meeting_id: "mtg-2026-11-05_12-00-00-123",
+                suggested_stem: Some("Họp Sprint"),
+            },
+            |req| {
+                assert_eq!(req.initial_dir, Some(saved_dir.clone()));
+                assert_eq!(req.default_file_name, "Họp Sprint.wav");
+                assert_eq!(req.filter_label, "WAV Audio");
+                assert_eq!(req.ext, "wav");
+                Ok(None)
+            },
+        )
+        .unwrap();
+        assert_eq!(audio_cancelled, None);
+
+        assert!(fs::read_dir(&untouched_dir).unwrap().next().is_none());
+        assert!(fs::read_dir(&saved_dir).unwrap().next().is_none());
+        assert_eq!(
+            store.resolve_initial_dir(Some(&downloads_dir)),
+            Some(saved_dir.clone())
+        );
+
+        fs::remove_dir_all(&app_data_dir).unwrap();
+        fs::remove_dir_all(&downloads_dir).unwrap();
+        fs::remove_dir_all(&saved_dir).unwrap();
+        fs::remove_dir_all(&untouched_dir).unwrap();
+        fs::remove_dir_all(&recordings_dir).unwrap();
+    }
+
+    #[test]
+    fn test_extension_enforcement_appends_missing_ext_guards_unconfirmed_collision_and_replaces_exact_path() {
+        let app_data_dir = temp_dir();
+        let custom_dir = temp_dir();
+        let recordings_dir = temp_dir();
+        let store = ExportPrefsStore::new(app_data_dir.join("export_prefs.json"));
+        let ctx = ExportDialogContext {
+            downloads_dir: None,
+            prefs: &store,
+        };
+
+        let pdf_v1 = b"%PDF-1.4\nv1\n%%EOF";
+        let pdf_v2 = b"%PDF-1.4\nv2-non-overwriting\n%%EOF";
+        let pdf_v3 = b"%PDF-1.4\nv3-confirmed-replace\n%%EOF";
+
+        let first_pdf = save_export_with_picker(
+            SaveExportInput {
+                ctx,
+                file_name: "Summary",
+                format: "pdf",
+                content_base64: &BASE64_STANDARD.encode(pdf_v1),
+            },
+            |req| {
+                assert_eq!(req.filter_label, "PDF");
+                assert_eq!(req.ext, "pdf");
+                Ok(Some(custom_dir.join("Report")))
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(first_pdf.file_name, "Report.pdf");
+        assert_eq!(fs::read(custom_dir.join("Report.pdf")).unwrap(), pdf_v1);
+
+        let collided_pdf = save_export_with_picker(
+            SaveExportInput {
+                ctx,
+                file_name: "Summary",
+                format: "pdf",
+                content_base64: &BASE64_STANDARD.encode(pdf_v2),
+            },
+            |_| Ok(Some(custom_dir.join("Report"))),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(collided_pdf.file_name, "Report (1).pdf");
+        assert_eq!(fs::read(custom_dir.join("Report.pdf")).unwrap(), pdf_v1);
+        assert_eq!(fs::read(custom_dir.join("Report (1).pdf")).unwrap(), pdf_v2);
+
+        let replaced_pdf = save_export_with_picker(
+            SaveExportInput {
+                ctx,
+                file_name: "Summary",
+                format: "pdf",
+                content_base64: &BASE64_STANDARD.encode(pdf_v3),
+            },
+            |_| Ok(Some(custom_dir.join("Report.pdf"))),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(replaced_pdf.file_name, "Report.pdf");
+        assert_eq!(replaced_pdf.size_bytes, pdf_v3.len() as u64);
+        assert_eq!(fs::read(custom_dir.join("Report.pdf")).unwrap(), pdf_v3);
+
+        let upper_ext = save_export_with_picker(
+            SaveExportInput {
+                ctx,
+                file_name: "Summary",
+                format: "md",
+                content_base64: &BASE64_STANDARD.encode(b"# Upper"),
+            },
+            |_| Ok(Some(custom_dir.join("Notes.MD"))),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(upper_ext.file_name, "Notes.MD");
+
+        let stripped_md = save_export_with_picker(
+            SaveExportInput {
+                ctx,
+                file_name: "Summary",
+                format: "md",
+                content_base64: &BASE64_STANDARD.encode(b"# Stripped"),
+            },
+            |_| Ok(Some(custom_dir.join("NotesPlain"))),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(stripped_md.file_name, "NotesPlain.md");
+
+        for (audio_ext, expected_label) in [
+            ("wav", "WAV Audio"),
+            ("mp3", "MP3 Audio"),
+            ("aac", "AAC Audio"),
+            ("m4a", "M4A Audio"),
+            ("ogg", "OGG Audio"),
+            ("flac", "FLAC Audio"),
+        ] {
+            let exported = save_export_with_picker(
                 SaveExportInput {
+                    ctx,
                     file_name: "upload",
                     format: audio_ext,
                     content_base64: &BASE64_STANDARD.encode(b"audio-bytes"),
                 },
+                |req| {
+                    assert_eq!(req.filter_label, expected_label);
+                    Ok(Some(custom_dir.join(format!("clip-{audio_ext}"))))
+                },
             )
+            .unwrap()
             .unwrap();
-            assert_eq!(exported.file_name, format!("upload.{audio_ext}"));
+            assert_eq!(exported.file_name, format!("clip-{audio_ext}.{audio_ext}"));
         }
 
-        fs::remove_dir_all(&dir).unwrap();
+        let wav_bytes: Vec<u8> = (0..=255).cycle().take(4096).collect();
+        let source_wav =
+            crate::recordings::recording_path(&recordings_dir, "mtg-2026-11-05_12-00-00-123")
+                .unwrap();
+        fs::write(&source_wav, &wav_bytes).unwrap();
+
+        let exported_wav = export_recording_with_picker(
+            AudioExportInput {
+                ctx,
+                recordings_dir: &recordings_dir,
+                meeting_id: "mtg-2026-11-05_12-00-00-123",
+                suggested_stem: None,
+            },
+            |req| {
+                assert_eq!(req.default_file_name, "mtg-2026-11-05_12-00-00-123.wav");
+                Ok(Some(custom_dir.join("StrippedAudio")))
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(exported_wav.file_name, "StrippedAudio.wav");
+        assert_eq!(exported_wav.size_bytes, wav_bytes.len() as u64);
+        assert_eq!(fs::read(&exported_wav.saved_path).unwrap(), wav_bytes);
+
+        for bad_chosen in [
+            PathBuf::new(),
+            PathBuf::from("relative.md"),
+            custom_dir.clone(),
+            PathBuf::from(format!("{}/", custom_dir.to_string_lossy())),
+        ] {
+            assert_eq!(
+                resolve_dialog_target_path(bad_chosen, "md"),
+                Err("invalid_file_name".to_string())
+            );
+        }
+
+        let leftover_temps = fs::read_dir(&custom_dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .any(|e| e.file_name().to_string_lossy().starts_with(".summeet-export-"));
+        assert!(!leftover_temps);
+
+        fs::remove_dir_all(&app_data_dir).unwrap();
+        fs::remove_dir_all(&custom_dir).unwrap();
+        fs::remove_dir_all(&recordings_dir).unwrap();
     }
 
     #[test]
-    fn test_create_unique_export_file_stops_after_max_collision_attempts() {
+    fn test_resolve_dialog_target_path_stops_after_max_collision_attempts() {
         let dir = temp_dir();
         for attempt in 0..MAX_COLLISION_ATTEMPTS {
             let name = if attempt == 0 {
@@ -500,124 +902,184 @@ mod tests {
             fs::write(dir.join(name), b"x").unwrap();
         }
 
-        let err = create_unique_export_file(ExportTarget {
-            dir: &dir,
-            stem: "dup",
-            ext: "md",
-        });
-        assert_eq!(err.unwrap_err(), "export_collision_limit");
+        let err = resolve_dialog_target_path(dir.join("dup"), "md");
+        assert_eq!(err, Err("export_collision_limit".to_string()));
         fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
-    fn test_export_recording_audio_copies_bytes_handles_collisions_and_maps_errors() {
-        let recordings_dir = temp_dir();
+    fn test_pre_dialog_validation_rejects_invalid_inputs_without_opening_picker() {
+        let app_data_dir = temp_dir();
         let downloads_dir = temp_dir();
-        let wav_bytes: Vec<u8> = (0..=255).cycle().take(4096).collect();
-        let source_wav =
-            crate::recordings::recording_path(&recordings_dir, "mtg-2026-11-05_12-00-00-123")
-                .unwrap();
-        fs::write(&source_wav, &wav_bytes).unwrap();
+        let recordings_dir = temp_dir();
+        let store = ExportPrefsStore::new(app_data_dir.join("export_prefs.json"));
+        let ctx = ExportDialogContext {
+            downloads_dir: Some(&downloads_dir),
+            prefs: &store,
+        };
+        let valid_md = BASE64_STANDARD.encode(b"# Summary");
+        let picker_calls = std::cell::Cell::new(0usize);
 
-        let exported = export_recording_in_dirs(
-            AudioExportDirs {
-                recordings_dir: &recordings_dir,
-                downloads_dir: Some(&downloads_dir),
+        for bad_format in ["exe", "sh", "html", "js", "bat", ".md", "MD", ""] {
+            assert_eq!(
+                save_export_with_picker(
+                    SaveExportInput {
+                        ctx,
+                        file_name: "notes",
+                        format: bad_format,
+                        content_base64: &valid_md,
+                    },
+                    |_| {
+                        picker_calls.set(picker_calls.get() + 1);
+                        Ok(None)
+                    },
+                ),
+                Err("invalid_export_format".to_string())
+            );
+        }
+
+        for bad_stem in ["", "   ", "...", "///"] {
+            assert_eq!(
+                save_export_with_picker(
+                    SaveExportInput {
+                        ctx,
+                        file_name: bad_stem,
+                        format: "md",
+                        content_base64: &valid_md,
+                    },
+                    |_| {
+                        picker_calls.set(picker_calls.get() + 1);
+                        Ok(None)
+                    },
+                ),
+                Err("invalid_file_name".to_string())
+            );
+        }
+
+        let oversized_b64 = "A".repeat(MAX_EXPORT_BASE64_LEN + 4);
+        assert_eq!(
+            save_export_with_picker(
+                SaveExportInput {
+                    ctx,
+                    file_name: "huge",
+                    format: "md",
+                    content_base64: &oversized_b64,
+                },
+                |_| {
+                    picker_calls.set(picker_calls.get() + 1);
+                    Ok(None)
+                },
+            ),
+            Err("export_too_large".to_string())
+        );
+
+        let unpadded_over_max = BASE64_STANDARD.encode(vec![0u8; MAX_EXPORT_BYTES + 1]);
+        assert_eq!(unpadded_over_max.len(), MAX_EXPORT_BASE64_LEN);
+        assert_eq!(
+            save_export_with_picker(
+                SaveExportInput {
+                    ctx,
+                    file_name: "huge-decoded",
+                    format: "wav",
+                    content_base64: &unpadded_over_max,
+                },
+                |_| {
+                    picker_calls.set(picker_calls.get() + 1);
+                    Ok(None)
+                },
+            ),
+            Err("export_too_large".to_string())
+        );
+
+        assert!(save_export_with_picker(
+            SaveExportInput {
+                ctx,
+                file_name: "bad-b64",
+                format: "md",
+                content_base64: "%%%not-base64%%%",
             },
-            AudioExportInput {
-                meeting_id: "mtg-2026-11-05_12-00-00-123",
-                suggested_stem: Some("Họp Sprint_2026-11-05_12-00"),
+            |_| {
+                picker_calls.set(picker_calls.get() + 1);
+                Ok(None)
             },
         )
-        .unwrap();
-        assert_eq!(exported.file_name, "Họp Sprint_2026-11-05_12-00.wav");
-        assert_eq!(exported.size_bytes, wav_bytes.len() as u64);
-        assert_eq!(fs::read(&exported.saved_path).unwrap(), wav_bytes);
-
-        let fallback_stem = export_recording_in_dirs(
-            AudioExportDirs {
-                recordings_dir: &recordings_dir,
-                downloads_dir: Some(&downloads_dir),
-            },
-            AudioExportInput {
-                meeting_id: "mtg-2026-11-05_12-00-00-123",
-                suggested_stem: None,
-            },
-        )
-        .unwrap();
-        assert_eq!(fallback_stem.file_name, "mtg-2026-11-05_12-00-00-123.wav");
-
-        let duplicate = export_recording_in_dirs(
-            AudioExportDirs {
-                recordings_dir: &recordings_dir,
-                downloads_dir: Some(&downloads_dir),
-            },
-            AudioExportInput {
-                meeting_id: "mtg-2026-11-05_12-00-00-123",
-                suggested_stem: Some("Họp Sprint_2026-11-05_12-00"),
-            },
-        )
-        .unwrap();
-        assert_eq!(duplicate.file_name, "Họp Sprint_2026-11-05_12-00 (1).wav");
+        .is_err());
 
         assert_eq!(
-            export_recording_in_dirs(
-                AudioExportDirs {
-                    recordings_dir: &recordings_dir,
-                    downloads_dir: Some(&downloads_dir),
+            save_export_with_picker(
+                SaveExportInput {
+                    ctx,
+                    file_name: "report",
+                    format: "pdf",
+                    content_base64: &BASE64_STANDARD.encode(b"NOT-A-PDF"),
                 },
+                |_| {
+                    picker_calls.set(picker_calls.get() + 1);
+                    Ok(None)
+                },
+            ),
+            Err("invalid_pdf_data".to_string())
+        );
+
+        assert_eq!(
+            export_recording_with_picker(
                 AudioExportInput {
+                    ctx,
+                    recordings_dir: &recordings_dir,
                     meeting_id: "",
                     suggested_stem: None,
+                },
+                |_| {
+                    picker_calls.set(picker_calls.get() + 1);
+                    Ok(None)
                 },
             ),
             Err("invalid_meeting_id".to_string())
         );
 
-        assert_eq!(
-            export_recording_in_dirs(
-                AudioExportDirs {
-                    recordings_dir: &recordings_dir,
-                    downloads_dir: Some(&downloads_dir),
-                },
-                AudioExportInput {
-                    meeting_id: "../../outside",
-                    suggested_stem: None,
-                },
-            ),
-            Err("recording_not_found".to_string())
-        );
+        for missing_id in ["../../outside", "mtg-uploaded-without-disk-wav"] {
+            assert_eq!(
+                export_recording_with_picker(
+                    AudioExportInput {
+                        ctx,
+                        recordings_dir: &recordings_dir,
+                        meeting_id: missing_id,
+                        suggested_stem: Some("Uploaded Clip"),
+                    },
+                    |_| {
+                        picker_calls.set(picker_calls.get() + 1);
+                        Ok(None)
+                    },
+                ),
+                Err("recording_not_found".to_string())
+            );
+        }
 
+        let valid_wav =
+            crate::recordings::recording_path(&recordings_dir, "mtg-2026-11-05_12-00-00-123")
+                .unwrap();
+        fs::write(&valid_wav, b"RIFF-wav").unwrap();
         assert_eq!(
-            export_recording_in_dirs(
-                AudioExportDirs {
-                    recordings_dir: &recordings_dir,
-                    downloads_dir: None,
-                },
+            export_recording_with_picker(
                 AudioExportInput {
-                    meeting_id: "mtg-2026-11-05_12-00-00-123",
-                    suggested_stem: None,
-                },
-            ),
-            Err("downloads_unavailable".to_string())
-        );
-
-        assert_eq!(
-            export_recording_in_dirs(
-                AudioExportDirs {
+                    ctx,
                     recordings_dir: &recordings_dir,
-                    downloads_dir: Some(&downloads_dir),
-                },
-                AudioExportInput {
                     meeting_id: "mtg-2026-11-05_12-00-00-123",
                     suggested_stem: Some("..."),
+                },
+                |_| {
+                    picker_calls.set(picker_calls.get() + 1);
+                    Ok(None)
                 },
             ),
             Err("invalid_file_name".to_string())
         );
 
-        fs::remove_dir_all(&recordings_dir).unwrap();
+        assert_eq!(picker_calls.get(), 0);
+
+        fs::remove_dir_all(&app_data_dir).unwrap();
         fs::remove_dir_all(&downloads_dir).unwrap();
+        fs::remove_dir_all(&recordings_dir).unwrap();
     }
 
     #[test]

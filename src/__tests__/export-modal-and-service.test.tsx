@@ -544,6 +544,54 @@ describe("Tauri export service & uploaded audio cache", () => {
       canvasMock.restore();
     }
   );
+
+  it("returns { success: true, data: null } when user cancels Save dialog in Markdown, PDF, or Audio export", async () => {
+    const canvasMock = installCanvasMock();
+    const meeting = createSampleMeeting({
+      audioDataUrl: "asset:///appdata/recordings/mtg.wav",
+    });
+
+    invokeMock.mockResolvedValueOnce(null);
+    const cancelledMd = await exportMeetingMarkdown({
+      meeting,
+      locale: "vi",
+    });
+    expect(cancelledMd).toEqual({ success: true, data: null });
+
+    invokeMock.mockResolvedValueOnce(null);
+    const cancelledPdf = await exportMeetingPdf({
+      meeting,
+      locale: "en",
+    });
+    expect(cancelledPdf).toEqual({ success: true, data: null });
+
+    invokeMock.mockResolvedValueOnce(null);
+    const cancelledDiskAudio = await downloadMeetingAudio({
+      meeting,
+      locale: "vi",
+    });
+    expect(cancelledDiskAudio).toEqual({ success: true, data: null });
+
+    const uploadedFile = new File([new Uint8Array([1, 2, 3])], "clip.mp3", {
+      type: "audio/mpeg",
+    });
+    const uploadedMeeting = createSampleMeeting({
+      id: "mtg-upload-cancel",
+      audioDataUrl: "blob:http://localhost:3040/cancel-1",
+    });
+    await cacheUploadedMeetingAudio({
+      meetingId: uploadedMeeting.id,
+      file: uploadedFile,
+    });
+    invokeMock.mockResolvedValueOnce(null);
+    const cancelledUploadedAudio = await downloadMeetingAudio({
+      meeting: uploadedMeeting,
+      locale: "en",
+    });
+    expect(cancelledUploadedAudio).toEqual({ success: true, data: null });
+
+    canvasMock.restore();
+  });
 });
 
 describe("CalendarAndExportModal & SumMeetWorkspace export UI", () => {
@@ -632,7 +680,7 @@ describe("CalendarAndExportModal & SumMeetWorkspace export UI", () => {
 
       invokeMock.mockResolvedValueOnce({
         fileName: "Summary.md",
-        savedPath: "/Downloads/Summary.md",
+        savedPath: "/Custom/Notes/Summary.md",
         sizeBytes: 256,
       });
       fireEvent.click(
@@ -640,13 +688,16 @@ describe("CalendarAndExportModal & SumMeetWorkspace export UI", () => {
       );
       await waitFor(() =>
         expect(onToast).toHaveBeenCalledWith(
-          dict.exportModal.savedToDownloads.replace("{fileName}", "Summary.md")
+          dict.exportModal.savedToPath.replace(
+            "{path}",
+            "/Custom/Notes/Summary.md"
+          )
         )
       );
 
       invokeMock.mockResolvedValueOnce({
         fileName: "Summary.pdf",
-        savedPath: "/Downloads/Summary.pdf",
+        savedPath: "/Custom/Reports/Summary.pdf",
         sizeBytes: 2048,
       });
       fireEvent.click(
@@ -654,13 +705,16 @@ describe("CalendarAndExportModal & SumMeetWorkspace export UI", () => {
       );
       await waitFor(() =>
         expect(onToast).toHaveBeenCalledWith(
-          dict.exportModal.savedToDownloads.replace("{fileName}", "Summary.pdf")
+          dict.exportModal.savedToPath.replace(
+            "{path}",
+            "/Custom/Reports/Summary.pdf"
+          )
         )
       );
 
       invokeMock.mockResolvedValueOnce({
         fileName: "Meeting.wav",
-        savedPath: "/Downloads/Meeting.wav",
+        savedPath: "/Custom/Audio/Meeting.wav",
         sizeBytes: 16_000,
       });
       fireEvent.click(
@@ -668,7 +722,10 @@ describe("CalendarAndExportModal & SumMeetWorkspace export UI", () => {
       );
       await waitFor(() =>
         expect(onToast).toHaveBeenCalledWith(
-          dict.exportModal.savedToDownloads.replace("{fileName}", "Meeting.wav")
+          dict.exportModal.savedToPath.replace(
+            "{path}",
+            "/Custom/Audio/Meeting.wav"
+          )
         )
       );
 
@@ -679,6 +736,77 @@ describe("CalendarAndExportModal & SumMeetWorkspace export UI", () => {
       await waitFor(() =>
         expect(onToast).toHaveBeenCalledWith(dict.errors.audioFileNotFound)
       );
+
+      canvasMock.restore();
+      cleanup();
+    }
+  );
+
+  it.each(["vi", "en"] as const)(
+    "emits zero toasts and re-enables buttons when user cancels Save dialog for .md, PDF, or Audio in %s",
+    async (locale: SupportedLocale) => {
+      const canvasMock = installCanvasMock();
+      const dict = getDictionary(locale);
+      const meeting = createSampleMeeting();
+      const onToast = vi.fn();
+
+      render(
+        <CalendarAndExportModal
+          mode="export"
+          onClose={vi.fn()}
+          meeting={meeting}
+          dict={dict}
+          onToast={onToast}
+        />
+      );
+
+      const mdBtn = screen.getByRole("button", {
+        name: dict.exportModal.downloadMarkdown,
+      }) as HTMLButtonElement;
+      const pdfBtn = screen.getByRole("button", {
+        name: dict.exportModal.downloadPdf,
+      }) as HTMLButtonElement;
+      const audioBtn = screen.getByRole("button", {
+        name: dict.exportModal.downloadAudio,
+      }) as HTMLButtonElement;
+
+      let resolveMdDialog!: (value: null) => void;
+      invokeMock.mockImplementationOnce(
+        () =>
+          new Promise<null>((resolve) => {
+            resolveMdDialog = resolve;
+          })
+      );
+      fireEvent.click(mdBtn);
+      await waitFor(() => expect(mdBtn.getAttribute("aria-busy")).toBe("true"));
+      expect(mdBtn.disabled).toBe(true);
+      expect(pdfBtn.disabled).toBe(true);
+      expect(audioBtn.disabled).toBe(true);
+
+      resolveMdDialog(null);
+      await waitFor(() =>
+        expect(mdBtn.getAttribute("aria-busy")).toBe("false")
+      );
+      expect(mdBtn.disabled).toBe(false);
+      expect(onToast).not.toHaveBeenCalled();
+
+      invokeMock.mockResolvedValueOnce(null);
+      fireEvent.click(pdfBtn);
+      await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(pdfBtn.getAttribute("aria-busy")).toBe("false")
+      );
+      expect(pdfBtn.disabled).toBe(false);
+      expect(onToast).not.toHaveBeenCalled();
+
+      invokeMock.mockResolvedValueOnce(null);
+      fireEvent.click(audioBtn);
+      await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(3));
+      await waitFor(() =>
+        expect(audioBtn.getAttribute("aria-busy")).toBe("false")
+      );
+      expect(audioBtn.disabled).toBe(false);
+      expect(onToast).not.toHaveBeenCalled();
 
       canvasMock.restore();
       cleanup();

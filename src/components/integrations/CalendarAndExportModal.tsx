@@ -102,15 +102,12 @@ export function CalendarAndExportModal({
         locale: dict.locale,
         includeTranscript,
       });
-      if (result.success && result.data) {
-        onToast(
-          dict.exportModal.savedToDownloads.replace(
-            "{fileName}",
-            result.data.fileName
-          )
-        );
-      } else {
+      if (!result.success) {
         onToast(result.error ?? dict.errors.exportFailed);
+      } else if (result.data !== null && result.data !== undefined) {
+        onToast(
+          dict.exportModal.savedToPath.replace("{path}", result.data.savedPath)
+        );
       }
     } finally {
       setBusyAction(null);
@@ -125,15 +122,12 @@ export function CalendarAndExportModal({
         locale: dict.locale,
         includeTranscript,
       });
-      if (result.success && result.data) {
-        onToast(
-          dict.exportModal.savedToDownloads.replace(
-            "{fileName}",
-            result.data.fileName
-          )
-        );
-      } else {
+      if (!result.success) {
         onToast(result.error ?? dict.errors.exportFailed);
+      } else if (result.data !== null && result.data !== undefined) {
+        onToast(
+          dict.exportModal.savedToPath.replace("{path}", result.data.savedPath)
+        );
       }
     } finally {
       setBusyAction(null);
@@ -147,15 +141,12 @@ export function CalendarAndExportModal({
         meeting,
         locale: dict.locale,
       });
-      if (result.success && result.data) {
-        onToast(
-          dict.exportModal.savedToDownloads.replace(
-            "{fileName}",
-            result.data.fileName
-          )
-        );
-      } else {
+      if (!result.success) {
         onToast(result.error ?? dict.errors.audioFileNotFound);
+      } else if (result.data !== null && result.data !== undefined) {
+        onToast(
+          dict.exportModal.savedToPath.replace("{path}", result.data.savedPath)
+        );
       }
     } finally {
       setBusyAction(null);
