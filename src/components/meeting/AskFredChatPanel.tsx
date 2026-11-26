@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useLayoutEffect, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Bot,
   Clock,
@@ -43,6 +45,31 @@ export function AskFredChatPanel({
 
   const [questionInput, setQuestionInput] = useState("");
   const [isAsking, setIsAsking] = useState(false);
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const latestTurnRef = useRef<HTMLDivElement>(null);
+
+  const latestQuestionIndex = meeting.chatMessages
+    .map((msg) => msg.role)
+    .lastIndexOf("user");
+  const latestQuestionId = meeting.chatMessages[latestQuestionIndex]?.id;
+  const latestTurnStart = Math.max(latestQuestionIndex, 0);
+
+  useLayoutEffect(() => {
+    const container = messagesRef.current;
+    const latestTurn = latestTurnRef.current;
+    if (!container || !latestTurn) return;
+    const reserveSpace = () => {
+      latestTurn.style.minHeight = latestQuestionId
+        ? `${container.clientHeight}px`
+        : "";
+    };
+    reserveSpace();
+    container.scrollTop = latestTurn.offsetTop;
+    if (typeof ResizeObserver === "undefined") return;
+    const resizeObserver = new ResizeObserver(reserveSpace);
+    resizeObserver.observe(container);
+    return () => resizeObserver.disconnect();
+  }, [meeting.id, latestQuestionId]);
 
   const handleAskQuestion = async (rawQuestion: string) => {
     const question = rawQuestion.trim();
@@ -97,6 +124,77 @@ export function AskFredChatPanel({
     }
   };
 
+  const messageNodes = meeting.chatMessages.map((msg) => (
+    <div
+      key={msg.id}
+      className={`flex gap-2.5 rounded-xl border p-3 ${
+        msg.role === "user"
+          ? "ml-6 border-orange-500/30 bg-orange-950/30"
+          : "mr-2 border-slate-800 bg-slate-950/70"
+      }`}
+    >
+      <div
+        className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg ${
+          msg.role === "user"
+            ? "bg-orange-600 text-white"
+            : "bg-emerald-500/20 text-emerald-300"
+        }`}
+      >
+        {msg.role === "user" ? (
+          <User className="h-3.5 w-3.5" />
+        ) : (
+          <Bot className="h-3.5 w-3.5" />
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        {msg.role === "user" ? (
+          <div className="whitespace-pre-line text-xs leading-relaxed text-slate-100">
+            {msg.content}
+          </div>
+        ) : (
+          <div className="space-y-2 break-words text-xs leading-relaxed text-slate-100 [&_:is(h1,h2)]:text-sm [&_:is(h1,h2,h3,h4,h5,h6)]:font-bold [&_ul]:list-disc [&_ol]:list-decimal [&_:is(ul,ol)]:pl-4 [&_li]:mt-0.5 [&_blockquote]:border-l-2 [&_blockquote]:border-slate-700 [&_blockquote]:pl-2.5 [&_blockquote]:text-slate-300 [&_hr]:border-slate-700 [&_code]:rounded [&_code]:bg-slate-900 [&_code]:px-1 [&_code]:font-mono [&_code]:text-[11px] [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-slate-900 [&_pre]:p-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 [&_table]:block [&_table]:overflow-x-auto [&_:is(th,td)]:border [&_:is(th,td)]:border-slate-700 [&_:is(th,td)]:px-2 [&_:is(th,td)]:py-1 [&_th]:bg-slate-900 [&_th]:text-left">
+            <Markdown
+              remarkPlugins={[remarkGfm]}
+              disallowedElements={["a", "img"]}
+              unwrapDisallowed
+            >
+              {msg.content}
+            </Markdown>
+          </div>
+        )}
+
+        {msg.citations && msg.citations.length > 0 && (
+          <div className="mt-2.5 border-t border-slate-800/80 pt-2">
+            <span className="text-[10px] font-semibold text-slate-400 uppercase">
+              {dict.askFred.citationsLabel}
+            </span>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {msg.citations.map((cit) => (
+                <button
+                  key={cit.segmentId}
+                  type="button"
+                  onClick={() => setCurrentAudioTimeMs(cit.timestampMs)}
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-0.5 font-mono text-[10px] text-orange-300 hover:border-orange-500 hover:bg-orange-950"
+                >
+                  <Clock className="h-2.5 w-2.5" />
+                  [{formatTimestampMmSs(cit.timestampMs)}]{" "}
+                  {cit.speakerName}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {msg.providerUsed && (
+          <div className="mt-1.5 text-[10px] text-slate-500">
+            ⚡ {msg.providerUsed}
+          </div>
+        )}
+      </div>
+    </div>
+  ));
+
   return (
     <div className="flex h-full flex-col rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
       {/* Header */}
@@ -144,76 +242,24 @@ export function AskFredChatPanel({
       </div>
 
       {/* Messages Container */}
-      <div className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1">
-        {meeting.chatMessages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex gap-2.5 rounded-xl border p-3 ${
-              msg.role === "user"
-                ? "ml-6 border-orange-500/30 bg-orange-950/30"
-                : "mr-2 border-slate-800 bg-slate-950/70"
-            }`}
-          >
-            <div
-              className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg ${
-                msg.role === "user"
-                  ? "bg-orange-600 text-white"
-                  : "bg-emerald-500/20 text-emerald-300"
-              }`}
-            >
-              {msg.role === "user" ? (
-                <User className="h-3.5 w-3.5" />
-              ) : (
-                <Bot className="h-3.5 w-3.5" />
-              )}
-            </div>
-
-            <div className="min-w-0 flex-1">
-              <div className="whitespace-pre-line text-xs leading-relaxed text-slate-100">
-                {msg.content}
+      <div
+        ref={messagesRef}
+        className="relative mt-3 flex-1 space-y-3 overflow-y-auto pr-1 [overflow-anchor:none]"
+      >
+        {messageNodes.slice(0, latestTurnStart)}
+        <div ref={latestTurnRef} className="space-y-3">
+          {messageNodes.slice(latestTurnStart)}
+          {isAsking && (
+            <div className="mr-2 flex gap-2.5 rounded-xl border border-orange-500/30 bg-slate-950/80 p-3">
+              <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-300">
+                <Bot className="h-3.5 w-3.5 animate-spin" />
               </div>
-
-              {msg.citations && msg.citations.length > 0 && (
-                <div className="mt-2.5 border-t border-slate-800/80 pt-2">
-                  <span className="text-[10px] font-semibold text-slate-400 uppercase">
-                    {dict.askFred.citationsLabel}
-                  </span>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {msg.citations.map((cit) => (
-                      <button
-                        key={cit.segmentId}
-                        type="button"
-                        onClick={() => setCurrentAudioTimeMs(cit.timestampMs)}
-                        className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-slate-900 px-2 py-0.5 font-mono text-[10px] text-orange-300 hover:border-orange-500 hover:bg-orange-950"
-                      >
-                        <Clock className="h-2.5 w-2.5" />
-                        [{formatTimestampMmSs(cit.timestampMs)}]{" "}
-                        {cit.speakerName}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {msg.providerUsed && (
-                <div className="mt-1.5 text-[10px] text-slate-500">
-                  ⚡ {msg.providerUsed}
-                </div>
-              )}
+              <div className="flex-1 whitespace-pre-line text-xs leading-relaxed text-slate-200">
+                {dict.askFred.thinking}
+              </div>
             </div>
-          </div>
-        ))}
-
-        {isAsking && (
-          <div className="mr-2 flex gap-2.5 rounded-xl border border-orange-500/30 bg-slate-950/80 p-3">
-            <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-300">
-              <Bot className="h-3.5 w-3.5 animate-spin" />
-            </div>
-            <div className="flex-1 whitespace-pre-line text-xs leading-relaxed text-slate-200">
-              {dict.askFred.thinking}
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Chat Input Form */}

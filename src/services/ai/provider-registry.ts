@@ -514,7 +514,6 @@ export async function answerMeetingQuestion(params: {
     transcriptText: formattedTranscript,
     conversationHistoryText: historyText,
     userQuestion: safeQuestion,
-    locale: params.locale,
   });
 
   const queryWords = safeQuestion
