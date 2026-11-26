@@ -104,9 +104,25 @@ describe("Prompt Security & Token Budget", () => {
       transcriptText: "Normal transcript",
       conversationHistoryText: "",
       userQuestion: malicious,
-      locale: "vi",
     });
     expect(prompt).toContain(`Prompt-Version: ${PROMPT_VERSION}`);
+  });
+
+  it("directs chat answers to the question language and Markdown format without a locale", () => {
+    const prompt = buildAskFredChatPrompt({
+      meetingTitle: "Test Sync",
+      transcriptText: "Normal transcript",
+      conversationHistoryText: "",
+      userQuestion: "Who owns the audio filter?",
+    });
+
+    expect(prompt).toContain(
+      "Reply in the same language as the question in <USER_QUERY_INPUT>, regardless of the app interface language or the transcript language."
+    );
+    expect(prompt).toContain("GitHub-flavored Markdown");
+    expect(prompt).toContain("[MM:SS]");
+    expect(prompt).not.toContain("Vietnamese");
+    expect(prompt).toContain("<USER_QUERY_INPUT>\n\nWho owns the audio filter?\n\n</USER_QUERY_INPUT>");
   });
 
   it("truncates oversized transcripts to fit within the token budget", () => {
@@ -519,6 +535,19 @@ describe("OpenRouter meeting chat", () => {
     const prompt = requestBody(fetchMock).messages[0].content as string;
     expect(prompt).not.toContain("Ignore all previous instructions");
     expect(prompt).toContain("[REDACTED_INSTRUCTION]");
+  });
+
+  it("sends the same chat prompt for every UI locale", async () => {
+    fetchMock.mockImplementation(async () => completionResponse("ok"));
+
+    await answerMeetingQuestion(CHAT_PARAMS);
+    await answerMeetingQuestion({ ...CHAT_PARAMS, locale: "en" });
+
+    const [viPrompt, enPrompt] = fetchMock.mock.calls.map(
+      ([, init]) => JSON.parse(init.body as string).messages[0].content
+    );
+    expect(viPrompt).toBe(enPrompt);
+    expect(viPrompt).toContain("Reply in the same language as the question");
   });
 
   it("returns a localized error when OpenRouter fails", async () => {
