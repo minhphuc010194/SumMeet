@@ -332,6 +332,21 @@ describe("Recording control bar after a reload", () => {
     expect(saved?.summary.overview).toBe("Tóm tắt");
   });
 
+  it("preserves finalized audio and duration when tail transcription throws after stop", async () => {
+    tailMock.mockRejectedValueOnce(new Error("unexpected tail error"));
+
+    const { meeting } = await recoverAndStopRecording();
+
+    const saved = useMeetingStore
+      .getState()
+      .meetings.find((m) => m.id === meeting.id);
+    expect(saved).toMatchObject({
+      status: "completed",
+      durationSeconds: 410,
+      audioDataUrl: `asset://${WAV_PATH}`,
+    });
+  });
+
   it("recovers a reload during device open from zero, not the previous meeting's offset", async () => {
     tailMock.mockResolvedValue({ success: true });
     activeMock.mockResolvedValue({ success: true, data: null });

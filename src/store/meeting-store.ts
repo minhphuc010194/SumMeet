@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import type {
   AIProviderSettings,
   ApiResponse,
@@ -25,6 +25,12 @@ import {
   callOpenRouterChat,
 } from "@/services/ai/provider-registry";
 import { buildDatedMeetingId } from "@/services/export/export-service";
+import {
+  createMeetingStorage,
+  isTauriRuntime,
+} from "@/services/storage/meeting-storage";
+
+let isTauriHydrationReady = false;
 
 const INITIAL_MEETINGS: Meeting[] = [];
 
@@ -422,6 +428,32 @@ export const useMeetingStore = create<MeetingStoreState>()(
     {
       name: "summarize-bot-clean-v4",
       version: 3,
+      storage: createJSONStorage(() =>
+        createMeetingStorage({
+          isWriteAllowed: () => isTauriHydrationReady,
+        })
+      ),
+      merge: (persistedState, currentState) => {
+        isTauriHydrationReady = true;
+        return {
+          ...currentState,
+          ...(persistedState as Partial<MeetingStoreState> | undefined),
+        };
+      },
+      onRehydrateStorage: () => {
+        if (isTauriRuntime()) {
+          isTauriHydrationReady = false;
+        }
+        return (_state, error) => {
+          if (error) {
+            console.error("[MeetingStore] Operation failed:", {
+              context: "rehydrate",
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+          isTauriHydrationReady = true;
+        };
+      },
       migrate: (persisted, version) => {
         const previous = persisted as PersistedMeetingState;
         const keepsSavedSettings = version >= 1;

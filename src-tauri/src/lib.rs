@@ -2,6 +2,7 @@ pub mod audio;
 mod credentials;
 pub mod db;
 mod exports;
+mod meeting_store;
 mod mic;
 mod mic_activity;
 mod recordings;
@@ -98,6 +99,9 @@ pub fn run() {
             app.manage(exports::ExportPrefsStore::new(
                 app_data_dir.join("export_prefs.json"),
             ));
+            app.manage(meeting_store::MeetingStoreFile::new(
+                app_data_dir.join("meeting-store.json"),
+            ));
             mic_activity::spawn_watcher(app.handle().clone());
 
             let click_opens_window = !cfg!(target_os = "macos");
@@ -147,6 +151,9 @@ pub fn run() {
             recordings::delete_all_recordings,
             exports::save_export_file,
             exports::export_recording_audio,
+            meeting_store::read_meeting_store,
+            meeting_store::write_meeting_store,
+            meeting_store::clear_meeting_store,
         ]);
 
     let builder = builder

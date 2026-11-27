@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, type ReactNode } from "react";
+import React, { useEffect, useState, type ReactNode } from "react";
 import { KeyRound, Loader2 } from "lucide-react";
 import { OpenRouterKeyForm } from "@/components/onboarding/OpenRouterKeyForm";
 import { getDictionary } from "@/i18n/dictionaries";
@@ -17,6 +17,19 @@ export function OpenRouterKeyGate({ locale, children }: OpenRouterKeyGateProps) 
   const dict = getDictionary(locale);
   const keyStatus = useMeetingStore((state) => state.openRouterKeyStatus);
   const loadOpenRouterKey = useMeetingStore((state) => state.loadOpenRouterKey);
+  const [isStoreHydrated, setIsStoreHydrated] = useState(() =>
+    useMeetingStore.persist.hasHydrated()
+  );
+
+  useEffect(() => {
+    if (useMeetingStore.persist.hasHydrated()) {
+      setIsStoreHydrated(true);
+      return;
+    }
+    return useMeetingStore.persist.onFinishHydration(() => {
+      setIsStoreHydrated(true);
+    });
+  }, []);
 
   useEffect(() => {
     void loadOpenRouterKey();
@@ -29,7 +42,7 @@ export function OpenRouterKeyGate({ locale, children }: OpenRouterKeyGateProps) 
     });
   }, [dict]);
 
-  if (keyStatus === "loading") {
+  if (!isStoreHydrated || keyStatus === "loading") {
     return (
       <main
         role="status"

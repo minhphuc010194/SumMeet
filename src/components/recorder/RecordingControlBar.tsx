@@ -517,14 +517,20 @@ export function RecordingControlBar({
     setIsProcessingResult(true);
     setProcessingStepText(dict.recorder.processingRecording);
 
+    let stoppedDurationSec = status.durationSeconds;
+    let stoppedAudioUrl: string | undefined;
+
     try {
       const stopped = await stopMicRecording(locale);
       await chunkInFlightRef.current;
       if (!stopped.success || !stopped.data) {
-        completeMeetingRecording(finishedMeetingId, status.durationSeconds);
+        completeMeetingRecording(finishedMeetingId, stoppedDurationSec);
         onToast(stopped.error ?? dict.errors.recordingFailed);
         return;
       }
+
+      stoppedDurationSec = Math.max(1, Math.round(stopped.data.durationSec));
+      stoppedAudioUrl = convertFileSrc(stopped.data.wavPath);
 
       const { openRouterKey, settings } = useMeetingStore.getState();
       const tracks = hasSystemAudio ? MIC_AND_SYSTEM_TRACKS : SINGLE_TRACK;
@@ -549,15 +555,20 @@ export function RecordingControlBar({
 
       await summarizeAndPresent({
         meetingId: finishedMeetingId,
-        durationSec: Math.max(1, Math.round(stopped.data.durationSec)),
+        durationSec: stoppedDurationSec,
         doneMessage: dict.recorder.recordingDone,
-        audioUrl: convertFileSrc(stopped.data.wavPath),
+        audioUrl: stoppedAudioUrl,
       });
     } catch (error) {
       console.error("[RecordingControlBar] Stop & summarize error:", {
         error: error instanceof Error ? error.message : String(error),
       });
-      completeMeetingRecording(finishedMeetingId, status.durationSeconds);
+      completeMeetingRecording(
+        finishedMeetingId,
+        stoppedDurationSec,
+        undefined,
+        stoppedAudioUrl
+      );
     } finally {
       activeMeetingIdRef.current = null;
       setIsProcessingResult(false);
