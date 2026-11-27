@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpenRouterKeyGate } from "@/components/onboarding/OpenRouterKeyGate";
 import { getDictionary } from "@/i18n/dictionaries";
 import { getStoredOpenRouterKey } from "@/services/ai/openrouter-key";
@@ -21,6 +21,10 @@ describe("OpenRouter key gate tray menu", () => {
       data: null,
     });
     useMeetingStore.setState({ openRouterKey: "", openRouterKeyStatus: "missing" });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it.each(["vi", "en"] as const)(
@@ -65,5 +69,39 @@ describe("OpenRouter key gate tray menu", () => {
       quitLabel: getDictionary("en").tray.quitLabel,
     });
     expect(setupTrayMenu).toHaveBeenCalledTimes(2);
+  });
+
+  it("waits for store hydration before mounting the workspace when the key is already ready", async () => {
+    let finishHydration: () => void = () => {};
+    vi.spyOn(useMeetingStore.persist, "hasHydrated").mockReturnValue(false);
+    vi.spyOn(useMeetingStore.persist, "onFinishHydration").mockImplementation(
+      (callback) => {
+        finishHydration = () => callback(useMeetingStore.getState());
+        return () => {};
+      }
+    );
+    vi.mocked(getStoredOpenRouterKey).mockResolvedValue({
+      success: true,
+      data: "sk-or-ready",
+    });
+    useMeetingStore.setState({
+      openRouterKey: "sk-or-ready",
+      openRouterKeyStatus: "ready",
+    });
+
+    render(
+      <OpenRouterKeyGate locale="vi">
+        <p>workspace</p>
+      </OpenRouterKeyGate>
+    );
+
+    expect(screen.getByRole("status")).toBeTruthy();
+    expect(screen.queryByText("workspace")).toBeNull();
+
+    await act(async () => {
+      finishHydration();
+    });
+
+    expect(await screen.findByText("workspace")).toBeTruthy();
   });
 });

@@ -45,6 +45,7 @@ import type { SupportedLocale } from "@/types/meeting";
 import {
   deleteAllRecordings,
   deleteRecording,
+  getActiveRecording,
   listRecordings,
   type RecordingFile,
 } from "@/services/audio/recording-commands";
@@ -159,7 +160,10 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
   }, []);
 
   const refreshDiskFiles = useCallback(async () => {
-    const listing = await listRecordings(locale);
+    const [listing, activeStatus] = await Promise.all([
+      listRecordings(locale),
+      getActiveRecording(locale),
+    ]);
     if (!listing.success || !listing.data) return;
     setDiskFiles(listing.data.files);
     setRecordingsDir(listing.data.recordingsDir);
@@ -169,9 +173,30 @@ export function SumMeetWorkspace({ locale }: SumMeetWorkspaceProps) {
       createMeetingSession,
       completeMeetingRecording,
     } = useMeetingStore.getState();
-    const knownIds = new Set(currentMeetings.map((m) => m.id));
+    const meetingsById = new Map(currentMeetings.map((m) => [m.id, m]));
     for (const file of [...listing.data.files].reverse()) {
-      if (knownIds.has(file.meetingId)) continue;
+      const existing = meetingsById.get(file.meetingId);
+      if (existing) {
+        const canVerifyIdle = activeStatus.success;
+        const isRecordingNow = activeStatus.data?.meetingId === file.meetingId;
+        const hasRecordedAudio = file.durationSec > 0;
+        const needsAudioOrDuration =
+          !existing.audioDataUrl || existing.durationSeconds === 0;
+        const shouldBackfill =
+          canVerifyIdle &&
+          !isRecordingNow &&
+          hasRecordedAudio &&
+          needsAudioOrDuration;
+        if (shouldBackfill) {
+          completeMeetingRecording(
+            file.meetingId,
+            Math.max(1, Math.round(file.durationSec)),
+            undefined,
+            convertFileSrc(file.wavPath)
+          );
+        }
+        continue;
+      }
       const timeLabel = formatRecordingDateTime(file.createdAtMs, locale);
       createMeetingSession({
         id: file.meetingId,

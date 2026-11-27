@@ -940,4 +940,164 @@ describe("CalendarAndExportModal & SumMeetWorkspace export UI", () => {
     expect(await screen.findByRole("dialog")).toBeTruthy();
     expect(screen.getByText(dict.exportModal.title)).toBeTruthy();
   });
+
+  it("backfills audioDataUrl, durationSeconds, and completed status from disk WAV for a stuck recording while preserving its segments", async () => {
+    const meetingId = "mtg-2026-11-27_17-26-58-117";
+    const diskCreatedMs = new Date(2026, 10, 27, 17, 26, 58).getTime();
+    const wavPath = `/appdata/recordings/${meetingId}.wav`;
+    const stuckMeeting = createSampleMeeting({
+      id: meetingId,
+      createdAt: new Date(diskCreatedMs).toISOString(),
+      durationSeconds: 0,
+      status: "recording",
+      audioDataUrl: undefined,
+      segments: [
+        {
+          id: "seg-existing",
+          meetingId,
+          speakerId: "spk_1",
+          speakerName: "You (Mic)",
+          channel: "mic_user",
+          text: "Keep existing segment",
+          startMs: 1000,
+          endMs: 4000,
+          confidence: 0.99,
+        },
+      ],
+    });
+    useMeetingStore.setState({
+      meetings: [stuckMeeting],
+      selectedMeetingId: meetingId,
+    });
+
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "list_recordings") {
+        return {
+          recordingsDir: "/appdata/recordings",
+          files: [
+            {
+              meetingId,
+              fileName: `${meetingId}.wav`,
+              wavPath,
+              sizeBytes: 61_077_206,
+              createdAtMs: diskCreatedMs,
+              durationSec: 1908.66,
+            },
+          ],
+        };
+      }
+      if (command === "list_audio_devices") {
+        return {
+          devices: [],
+          routing: {
+            active_input_device: "Default Mic",
+            active_output_device: "Speakers",
+          },
+          system_audio_supported: false,
+        };
+      }
+      if (command === "get_recording_status") {
+        return { active: null };
+      }
+      return null;
+    });
+
+    const { container } = render(<SumMeetWorkspace locale="vi" />);
+
+    await waitFor(() => {
+      const updated = useMeetingStore
+        .getState()
+        .meetings.find((m) => m.id === meetingId);
+      expect(updated).toMatchObject({
+        durationSeconds: 1909,
+        status: "completed",
+        audioDataUrl: `asset://${wavPath}`,
+      });
+    });
+
+    const updated = useMeetingStore
+      .getState()
+      .meetings.find((m) => m.id === meetingId);
+    expect(updated?.segments.map((s) => s.text)).toEqual([
+      "Keep existing segment",
+    ]);
+    await waitFor(() =>
+      expect(
+        container.querySelector(`audio[src="asset://${wavPath}"]`)
+      ).not.toBeNull()
+    );
+  });
+
+  it("does not backfill or mark completed when the recording is currently active", async () => {
+    const meetingId = "mtg-active-now";
+    const wavPath = `/appdata/recordings/${meetingId}.wav`;
+    const activeMeeting = createSampleMeeting({
+      id: meetingId,
+      durationSeconds: 0,
+      status: "recording",
+      audioDataUrl: undefined,
+    });
+    useMeetingStore.setState({
+      meetings: [activeMeeting],
+      selectedMeetingId: meetingId,
+    });
+
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "list_recordings") {
+        return {
+          recordingsDir: "/appdata/recordings",
+          files: [
+            {
+              meetingId,
+              fileName: `${meetingId}.wav`,
+              wavPath,
+              sizeBytes: 64_000,
+              createdAtMs: Date.now(),
+              durationSec: 30,
+            },
+          ],
+        };
+      }
+      if (command === "list_audio_devices") {
+        return {
+          devices: [],
+          routing: {
+            active_input_device: "Default Mic",
+            active_output_device: "Speakers",
+          },
+          system_audio_supported: false,
+        };
+      }
+      if (command === "get_recording_status") {
+        return {
+          active: {
+            meetingId,
+            wavPath,
+            startedAtMs: Date.now(),
+            elapsedSec: 30,
+            level: 0.2,
+            hasSystemAudio: false,
+            systemLevel: 0,
+          },
+        };
+      }
+      return null;
+    });
+
+    render(<SumMeetWorkspace locale="vi" />);
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("list_recordings", undefined)
+    );
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("get_recording_status", undefined)
+    );
+
+    const saved = useMeetingStore
+      .getState()
+      .meetings.find((m) => m.id === meetingId);
+    expect(saved?.status).toBe("recording");
+    expect(saved?.durationSeconds).toBe(0);
+    expect(saved?.audioDataUrl).toBeUndefined();
+  });
 });
